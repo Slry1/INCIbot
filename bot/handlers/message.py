@@ -16,24 +16,21 @@ import asyncio
 router = Router()
 _cosmetic_parser = CosmeticParser()
 _rag = IngredientRAG()
-# Временное хранилище результатов поиска
+
 user_search_cache = {}
 
 
 class ProductSelectCallback(CallbackData, prefix="prod"):
-    """Callback для выбора товара из списка"""
     nm_id: int
 
 
 class SearchCancelCallback(CallbackData, prefix="cancel_search"):
-    """Callback для отмены поиска"""
     pass
 
 
 # ─── Вспомогательные функции ─────────────────────────────────────────────────
 
 def _is_url(text: str) -> bool:
-    """Проверяет, является ли сообщение ссылкой на магазин."""
     lower = text.lower()
     return any(domain in lower for domain in (
         "wildberries.ru", "wb.ru", "ozon.ru", "goldapple.ru"
@@ -41,19 +38,13 @@ def _is_url(text: str) -> bool:
 
 
 def _is_product_name(text: str) -> bool:
-    """
-    Эвристика: короткое сообщение без запятых — скорее название товара,
-    а не готовый состав.
-    """
     return CosmeticParser.looks_like_search_query(text)
 
 
 def build_search_results_keyboard(products: list[dict]) -> InlineKeyboardMarkup:
-    """Создает клавиатуру с результатами поиска"""
     buttons = []
 
     for i, p in enumerate(products, 1):
-        # Обрезаем название чтобы поместилось в кнопку
         name = p['name'][:40] + "..." if len(p['name']) > 40 else p['name']
         text = f"{i}. {name} | {p['brand']} | {p['price']}₽"
         buttons.append([
@@ -80,7 +71,6 @@ async def process_product(
         llm_client: YandexGPTClient,
         status_msg: Message
 ):
-    """Обрабатывает выбранный товар: получает состав и оценивает"""
     import aiohttp
 
     start_time = time.time()
@@ -91,7 +81,6 @@ async def process_product(
     composition = None
     product_info = None
 
-    # Используем существующий асинхронный метод
     async with aiohttp.ClientSession() as session:
         product_info = await _cosmetic_parser.wb.fetch_by_article(session, str(nm_id))
         if product_info:
@@ -164,7 +153,6 @@ async def process_product(
 
         await message.answer(answer_text, parse_mode="HTML")
 
-        # Сохраняем в историю
         async for session in get_session():
             repo = DatabaseRepository(session)
             await repo.save_history(
@@ -183,8 +171,6 @@ async def process_product(
         )
 
 
-# ─── Хэндлеры ─────────────────────────────────────────────────────────────────
-
 @router.message(F.text == "📝 Оценить состав")
 async def prompt_ingredients(message: Message):
     await message.answer(
@@ -201,15 +187,9 @@ async def prompt_ingredients(message: Message):
 
 @router.message(F.text)
 async def handle_message(message: Message, state: FSMContext, llm_client: YandexGPTClient):
-    """
-    Обработка текстовых сообщений.
-    Сначала пытается спарсить состав по ссылке/названию,
-    затем передаёт его на оценку в LLM.
-    """
     start_time = time.time()
     text = message.text.strip()
 
-    # ── Загружаем профиль пользователя ──
     async for session in get_session():
         repo = DatabaseRepository(session)
         user = await repo.get_or_create_user(message.from_user.id)
@@ -219,7 +199,6 @@ async def handle_message(message: Message, state: FSMContext, llm_client: Yandex
     ingredients_text = text
     product_info: ProductInfo | None = None
 
-    # ── Если URL — парсим напрямую ──
     if _is_url(text):
         await message.bot.send_chat_action(message.chat.id, "typing")
         status_msg = await message.answer("🔗 Загружаю состав со страницы товара...")
@@ -245,12 +224,10 @@ async def handle_message(message: Message, state: FSMContext, llm_client: Yandex
             )
             return
 
-    # ── Если название товара — ищем несколько вариантов ──
     elif _is_product_name(text):
         await message.bot.send_chat_action(message.chat.id, "typing")
         status_msg = await message.answer(f"🔍 Ищу: <b>{text}</b>...", parse_mode="HTML")
 
-        # Запускаем поиск в отдельном потоке
         products = await asyncio.to_thread(
             _cosmetic_parser.wb.search_sync_multiple, text, 5
         )
@@ -263,10 +240,8 @@ async def handle_message(message: Message, state: FSMContext, llm_client: Yandex
             )
             return
 
-        # Сохраняем результаты для обработки callback
         user_search_cache[message.from_user.id] = products
 
-        # Формируем ответ с выбором
         response_text = f"🔍 <b>Найдено {len(products)} товаров:</b>\n\n"
         for i, p in enumerate(products, 1):
             response_text += f"{i}. <b>{p['name'][:60]}</b>\n"
@@ -280,22 +255,16 @@ async def handle_message(message: Message, state: FSMContext, llm_client: Yandex
             reply_markup=keyboard,
             parse_mode="HTML"
         )
-        return  # Ждем выбора пользователя
+        return
 
-    # ── Если прислали готовый состав ──
     else:
         await message.bot.send_chat_action(message.chat.id, "typing")
-        status_msg = None  # Нет статусного сообщения
+        status_msg = None
 
-    # ── Оценка состава через LLM (для URL и готового состава) ──
     if not _is_product_name(text) or (_is_url(text) and product_info):
-        # Если было статусное сообщение о найденном товаре - оставляем его
         if not status_msg:
-            # Если статусного сообщения не было (готовый состав) - создаем
             analyzing_msg = await message.answer("🤖 Анализирую состав...")
         else:
-            # Если товар был найден - status_msg уже содержит "✅ Нашёл продукт..."
-            # Добавляем новое сообщение "Анализирую..."
             analyzing_msg = await message.answer("🤖 Анализирую состав...")
 
         prompt = PromptBuilder.build_prompt(
@@ -350,11 +319,9 @@ async def handle_message(message: Message, state: FSMContext, llm_client: Yandex
 
             answer_text += "\n<i>⚠️ Оценка носит рекомендательный характер и сгенерирована при помощи ИИ. Перед использованием проведите патч-тест.</i>"
 
-            # Всегда удаляем "Анализирую..." и отправляем новое сообщение
             await analyzing_msg.delete()
             await message.answer(answer_text, parse_mode="HTML")
 
-            # Сохраняем в историю
             async for session in get_session():
                 repo = DatabaseRepository(session)
                 await repo.save_history(
@@ -374,7 +341,6 @@ async def handle_message(message: Message, state: FSMContext, llm_client: Yandex
             )
 
 
-# ─── Callback-хэндлеры ────────────────────────────────────────────────────────
 
 @router.callback_query(ProductSelectCallback.filter())
 async def on_product_select(
@@ -382,18 +348,15 @@ async def on_product_select(
         callback_data: ProductSelectCallback,
         llm_client: YandexGPTClient
 ):
-    """Обработка выбора товара из списка"""
     nm_id = callback_data.nm_id
 
     await callback.answer("Загружаю состав...")
 
-    # Загружаем пользователя
     async for session in get_session():
         repo = DatabaseRepository(session)
         user = await repo.get_or_create_user(callback.from_user.id)
         break
 
-    # Создаем статусное сообщение
     status_msg = await callback.message.edit_text("🔗 Загружаю состав товара...")
 
     # Обрабатываем товар
@@ -402,9 +365,7 @@ async def on_product_select(
 
 @router.callback_query(SearchCancelCallback.filter())
 async def on_search_cancel(callback: CallbackQuery):
-    """Отмена поиска"""
     await callback.answer("Поиск отменен")
     await callback.message.edit_text("❌ Поиск отменен")
 
-    # Очищаем кэш
     user_search_cache.pop(callback.from_user.id, None)

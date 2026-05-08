@@ -1,7 +1,3 @@
-"""
-llm/rag_module.py
-RAG-модуль для поиска информации об ингредиентах в базе знаний Renude.
-"""
 import json
 import re
 from typing import Dict, List, Optional, Tuple
@@ -10,11 +6,6 @@ from loguru import logger
 
 
 class IngredientRAG:
-    """
-    Retrieval-Augmented Generation для косметических ингредиентов.
-    Использует базу знаний Renude (248 ингредиентов).
-    """
-
     def __init__(self, kb_path: str = "C:\\Users\\timof\yandexgpt_bot\llm\data\ingredients.json"):
         with open(kb_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -52,24 +43,13 @@ class IngredientRAG:
     }
 
     def search(self, ingredient_text: str) -> Optional[Dict]:
-        """
-        Поиск информации об ингредиенте.
-        Стратегия: точное совпадение → частичное с минимум 2 слов → поиск по значимым словам.
-
-        Args:
-            ingredient_text: текст из состава (может быть с доп. символами)
-
-        Returns:
-            Словарь с информацией или None
-        """
-        # Очистка текста
         text = ingredient_text.strip()
         text = re.sub(r'[\n\r\t]+', ', ', text)  # переносы строк → пробелы
         text = re.sub(r'\s+', ' ', text)  # множественные пробелы → один
         text = text.strip()
         text_lower = text.lower()
 
-        # Защита от пустого ввода
+
         if not text_lower:
             return None
 
@@ -86,7 +66,7 @@ class IngredientRAG:
         if hasattr(self, 'sci_index') and text_lower in self.sci_index:
             return self.sci_index[text_lower]
 
-        # 4. Частичное совпадение: проверяем ПАРЫ соседних слов из запроса
+        # 4. Частичное совпадение проверяем ПАРЫ соседних слов из запроса
         words = re.split(r'[\s/-]+', text_lower)
         words = [w for w in words if w]  # убираем пустые
 
@@ -128,15 +108,6 @@ class IngredientRAG:
         return None
 
     def enrich_prompt(self, ingredients_text: str) -> str:
-        """
-        Формирует справочный блок для добавления в промпт LLM.
-
-        Args:
-            ingredients_text: полный текст состава (через запятую)
-
-        Returns:
-            Текст для вставки в промпт или пустая строка
-        """
         ingredient_list = [i.strip() for i in ingredients_text.split(",") if i.strip()]
 
         found_ingredients = []
@@ -152,7 +123,6 @@ class IngredientRAG:
         if not found_ingredients:
             return ""
 
-        # Формируем справочный блок
         blocks = []
         blocks.append("=== СПРАВОЧНАЯ ИНФОРМАЦИЯ ОБ ИНГРЕДИЕНТАХ ===")
         blocks.append("")
@@ -177,7 +147,6 @@ class IngredientRAG:
 
 
 class RAGStatistics:
-    """Сбор статистики использования RAG для экспериментов"""
 
     def __init__(self):
         self.total_searches = 0

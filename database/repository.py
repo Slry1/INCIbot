@@ -10,7 +10,6 @@ class DatabaseRepository:
 
     async def get_or_create_user(self, telegram_id: int, username: str = None,
                                  first_name: str = None, last_name: str = None) -> User:
-        """Получение пользователя или создание нового"""
         result = await self.session.execute(
             select(User).where(User.telegram_id == telegram_id)
         )
@@ -30,7 +29,6 @@ class DatabaseRepository:
 
     async def update_user_profile(self, user_id: int, skin_type: str = None,
                                   allergens: list = None, preferences: list = None) -> User:
-        """Обновление персонализированного профиля пользователя"""
         update_data = {}
         if skin_type is not None:
             update_data["skin_type"] = skin_type
@@ -60,12 +58,6 @@ class DatabaseRepository:
         await self.session.commit()
 
     async def delete_user_data(self, user_id: int) -> None:
-        """
-        Удаление персональных данных пользователя (право на забвение по 152-ФЗ).
-        Удаляет: тип кожи, аллергены, предпочтения, историю запросов.
-        Сохраняет: telegram_id (для учёта отказа от соглашения).
-        """
-        # Очищаем профиль
         await self.session.execute(
             update(User)
             .where(User.id == user_id)
@@ -76,7 +68,6 @@ class DatabaseRepository:
                 agreement_accepted=False
             )
         )
-        # Удаляем историю запросов
         await self.session.execute(
             delete(History).where(History.user_id == user_id)
         )
@@ -87,7 +78,6 @@ class DatabaseRepository:
                            llm_response_parsed: dict = None,
                            prompt_used: str = None,
                            processing_time_ms: int = None) -> History:
-        """Сохранение истории запроса"""
         history = History(
             user_id=user_id,
             user_message=user_message,
@@ -101,7 +91,6 @@ class DatabaseRepository:
         return history
 
     async def get_user_history(self, user_id: int, limit: int = 5) -> list:
-        """Получение последних запросов пользователя"""
         result = await self.session.execute(
             select(History)
             .where(History.user_id == user_id)
@@ -111,7 +100,6 @@ class DatabaseRepository:
         return result.scalars().all()
 
     async def get_user_stats(self, user_id: int) -> dict:
-        """Получение агрегированной статистики пользователя"""
         result = await self.session.execute(
             select(
                 func.count(History.id).label("total_queries"),

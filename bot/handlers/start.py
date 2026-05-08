@@ -1,7 +1,3 @@
-"""
-bot/handlers/start.py
-Обработчики команд /start, /help, /how_it_works и пользовательского соглашения.
-"""
 from aiogram import Router, F
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
@@ -32,14 +28,11 @@ agree_keyboard = ReplyKeyboardMarkup(
 
 class AgreementCallback(CallbackData, prefix="agree"):
     """Callback для принятия пользовательского соглашения"""
-    action: str  # "accept" или "decline"
+    action: str
 
-
-# ==================== Команда /start ====================
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
-    """Обработчик команды /start"""
     await state.clear()
 
     async for session in get_session():
@@ -52,7 +45,6 @@ async def cmd_start(message: Message, state: FSMContext):
         )
         break
 
-    # Если пользователь уже принял соглашение — показываем главное меню
     if user and user.agreement_accepted:
         welcome_text = (
             f"👋 С возвращением, {message.from_user.first_name}!\n\n"
@@ -66,7 +58,6 @@ async def cmd_start(message: Message, state: FSMContext):
         )
         await message.answer(welcome_text, reply_markup=main_keyboard, parse_mode="HTML")
     else:
-        # Первый запуск — показываем приветствие и пользовательское соглашение
         welcome_text = (
             f"👋 Привет, {message.from_user.first_name}!\n\n"
             "Я — <b>INCIbot</b>, чат-бот для персонализированной оценки "
@@ -84,9 +75,6 @@ async def cmd_start(message: Message, state: FSMContext):
         )
         await message.answer(welcome_text, parse_mode="HTML")
         await show_agreement(message)
-
-
-# ==================== Пользовательское соглашение ====================
 
 async def show_agreement(message: Message):
     """Показывает пользовательское соглашение и запрашивает согласие"""
@@ -164,16 +152,11 @@ async def on_agreement_declined(message: Message):
         parse_mode="HTML"
     )
 
-
-# ==================== Команда /agreement ====================
-
 @router.message(Command("agreement"))
 async def cmd_agreement(message: Message):
     """Повторный показ пользовательского соглашения"""
     await show_agreement(message)
 
-
-# ==================== Команда /delete_data ====================
 
 @router.message(Command("delete_data"))
 async def cmd_delete_data(message: Message):
@@ -199,8 +182,6 @@ async def cmd_delete_data(message: Message):
         parse_mode="HTML"
     )
 
-
-# ==================== Команда /my_data ====================
 
 @router.message(Command("my_data"))
 async def cmd_my_data(message: Message):
@@ -229,7 +210,6 @@ async def cmd_my_data(message: Message):
     await message.answer(profile_text, parse_mode="HTML")
 
 
-# ==================== Команда /help ====================
 
 @router.message(F.text == "❓ Помощь")
 @router.message(Command("help"))
@@ -268,12 +248,9 @@ async def cmd_help(message: Message):
     await message.answer(help_text, parse_mode="HTML")
 
 
-# ==================== Команда /how_it_works ====================
-
 @router.message(F.text == "🔍 Как это работает")
 @router.message(Command("how_it_works"))
 async def cmd_how_it_works(message: Message):
-    """Подробное описание работы системы (в соответствии со ст. 18.1 ФЗ «О рекламе»)"""
     how_it_works_text = (
         "🔍 <b>Как работает INCIbot</b>\n\n"
         "Я анализирую состав косметического средства и даю "
@@ -317,11 +294,8 @@ async def cmd_how_it_works(message: Message):
     await message.answer(how_it_works_text, parse_mode="HTML")
 
 
-# ==================== Команда /settings (алиас) ====================
 
 @router.message(Command("settings"))
 async def cmd_settings_alias(message: Message, state: FSMContext):
-    """Алиас для команды /settings — перенаправляет на настройки"""
-    # Импортируем здесь чтобы избежать циклического импорта
     from bot.handlers.profile import start_settings
     await start_settings(message, state)

@@ -1,16 +1,3 @@
-"""
-benchmarks/benchmark_rag_ab.py
-Бенчмарк A/B: сравнение ответов LLM с RAG и без RAG.
-
-Используется в Главе 4 ВКР, Раздел 4.X "Влияние RAG на качество оценки".
-
-Запуск:
-    python benchmarks/benchmark_rag_ab.py
-
-На выходе:
-    results/benchmark_rag_ab.json — сырые данные
-    results/benchmark_rag_ab_summary.json — агрегированные метрики
-"""
 import json
 import asyncio
 import time
@@ -24,10 +11,10 @@ from llm.prompt_builder import PromptBuilder
 from llm.rag_module import IngredientRAG
 
 
-# Модель для тестирования
+
 MODEL_NAME = "DeepSeek3.2"
 
-# Результаты
+
 OUTPUT_DIR = Path("results")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -48,7 +35,7 @@ RAG_TEST_CASES = [
         "category": "rag_positive",
         "description": "Все компоненты кроме Aqua есть в RAG-базе",
         "expected_from_rag": [
-            "Safflower Seed Oil",  # должен найти в базе
+            "Safflower Seed Oil",
             "Linoleic Acid",
             "Glycerin",
             "Tocopherol",
@@ -91,7 +78,7 @@ RAG_TEST_CASES = [
         "description": "Parfum и отдушки — RAG должен предупредить who_should_avoid",
         "expected_from_rag": [
             "Glycerin",
-            "Parfum",  # RAG знает что Parfum — аллерген
+            "Parfum",
         ]
     },
     {
@@ -101,7 +88,7 @@ RAG_TEST_CASES = [
         "profile": "B",
         "category": "rag_none",
         "description": "Ни одного ингредиента из базы Renude",
-        "expected_from_rag": []  # Ничего не найдено
+        "expected_from_rag": []
     },
     {
         "id": "RAG06",
@@ -165,8 +152,6 @@ RAG_TEST_CASES = [
 ]
 
 
-# ==================== Структуры данных ====================
-
 @dataclass
 class ABResult:
     """Результат одного A/B теста"""
@@ -182,9 +167,9 @@ class ABResult:
     rag_recommendations: List[str]
     rag_tokens: Dict[str, int]
     rag_time_ms: int
-    rag_ingredients_found: int  # сколько ингредиентов найдено в RAG-базе
+    rag_ingredients_found: int
 
-    # Без RAG
+
     no_rag_score: Optional[int]
     no_rag_explanation: str
     no_rag_warnings: List[str]
@@ -192,14 +177,13 @@ class ABResult:
     no_rag_tokens: Dict[str, int]
     no_rag_time_ms: int
 
-    # Разницы
-    score_delta: int  # rag_score - no_rag_score
-    time_delta_ms: int  # rag_time_ms - no_rag_time_ms
-    tokens_delta: int  # rag_tokens_total - no_rag_tokens_total
-    explanation_length_delta: int  # разница в длине пояснения
+
+    score_delta: int
+    time_delta_ms: int
+    tokens_delta: int
+    explanation_length_delta: int
 
 
-# ==================== Основной бенчмарк ====================
 
 async def run_ab_benchmark():
     """Запускает A/B тестирование для всех кейсов"""
@@ -211,7 +195,7 @@ async def run_ab_benchmark():
     results: List[ABResult] = []
 
     logger.info(f"{'=' * 60}")
-    logger.info(f"🚀 A/B БЕНЧМАРК RAG: {MODEL_NAME}")
+    logger.info(f" A/B БЕНЧМАРК RAG: {MODEL_NAME}")
     logger.info(f"{'=' * 60}")
     logger.info(f"Кейсов: {len(RAG_TEST_CASES)}")
     logger.info(f"Профилей: {len(PROFILES)}")
@@ -225,7 +209,7 @@ async def run_ab_benchmark():
         logger.info(f"  Категория: {case['category']}")
         logger.info(f"  Состав: {case['ingredients'][:80]}...")
 
-        # === ЗАПРОС С RAG ===
+
         prompt_rag = PromptBuilder.build_prompt(
             skin_type=profile["skin_type"],
             allergens=profile["allergens"],
@@ -233,14 +217,13 @@ async def run_ab_benchmark():
             ingredients=case["ingredients"],
             name=case["name"],
             history=None,
-            rag=rag  # <-- RAG включен
+            rag=rag
         )
 
         start_rag = time.monotonic()
         response_rag = await client.generate_response(prompt_rag)
         time_rag = int((time.monotonic() - start_rag) * 1000)
 
-        # Считаем сколько ингредиентов нашлось в RAG
         rag_context = rag.enrich_prompt(case["ingredients"])
         if "Найдено в базе:" in rag_context:
             found_str = rag_context.split("Найдено в базе:")[1].split()[0]
@@ -248,10 +231,8 @@ async def run_ab_benchmark():
         else:
             ingredients_found = 0
 
-        # Пауза чтобы не упереться в rate limit
         await asyncio.sleep(0.3)
 
-        # === ЗАПРОС БЕЗ RAG ===
         prompt_no_rag = PromptBuilder.build_prompt(
             skin_type=profile["skin_type"],
             allergens=profile["allergens"],
@@ -259,14 +240,14 @@ async def run_ab_benchmark():
             ingredients=case["ingredients"],
             name=case["name"],
             history=None,
-            rag=None  # <-- RAG выключен
+            rag=None
         )
 
         start_no_rag = time.monotonic()
         response_no_rag = await client.generate_response(prompt_no_rag)
         time_no_rag = int((time.monotonic() - start_no_rag) * 1000)
 
-        # === ФОРМИРУЕМ РЕЗУЛЬТАТ ===
+
         result = ABResult(
             case_id=case["id"],
             case_name=case["name"],
@@ -300,13 +281,13 @@ async def run_ab_benchmark():
 
         results.append(result)
 
-        # Краткий вывод в консоль
+
         logger.info(
-            f"  📊 RAG: score={result.rag_score}, {result.rag_time_ms}ms, "
+            f"  RAG: score={result.rag_score}, {result.rag_time_ms}ms, "
             f"найдено={result.rag_ingredients_found}"
         )
         logger.info(
-            f"  📊 NO:  score={result.no_rag_score}, {result.no_rag_time_ms}ms"
+            f"  NO:  score={result.no_rag_score}, {result.no_rag_time_ms}ms"
         )
         logger.info(
             f"  Δ: score={result.score_delta:+d}, time={result.time_delta_ms:+d}ms, "
@@ -314,9 +295,8 @@ async def run_ab_benchmark():
         )
         logger.info("")
 
-        await asyncio.sleep(0.5)  # Пауза между кейсами
+        await asyncio.sleep(0.5)
 
-    # Сохраняем сырые результаты
     raw_output = OUTPUT_DIR / "benchmark_rag_ab.json"
     with open(raw_output, 'w', encoding='utf-8') as f:
         json.dump({
@@ -324,27 +304,24 @@ async def run_ab_benchmark():
             "total_cases": len(results),
             "results": [asdict(r) for r in results],
         }, f, ensure_ascii=False, indent=2)
-    logger.info(f"📁 Сырые данные: {raw_output}")
+    logger.info(f" Сырые данные: {raw_output}")
 
-    # Агрегируем и сохраняем сводку
+
     summary = compute_summary(results)
     summary_output = OUTPUT_DIR / "benchmark_rag_ab_summary.json"
     with open(summary_output, 'w', encoding='utf-8') as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
-    logger.info(f"📁 Сводка: {summary_output}")
+    logger.info(f" Сводка: {summary_output}")
 
-    # Выводим итоги в консоль
     print_summary(summary)
 
     return results, summary
 
 
 def compute_summary(results: List[ABResult]) -> Dict[str, Any]:
-    """Агрегирует результаты A/B теста"""
 
     total = len(results)
 
-    # Разбивка по категориям
     categories = {}
     for cat in ["rag_positive", "rag_negative", "rag_none", "rag_specific", "rag_conflict", "rag_edge"]:
         cat_results = [r for r in results if r.category == cat]
@@ -361,7 +338,6 @@ def compute_summary(results: List[ABResult]) -> Dict[str, Any]:
                 "avg_rag_ingredients_found": sum(r.rag_ingredients_found for r in cat_results) / len(cat_results),
             }
 
-    # Общие метрики
     valid_results = [r for r in results if r.rag_score is not None and r.no_rag_score is not None]
 
     return {
@@ -386,12 +362,11 @@ def compute_summary(results: List[ABResult]) -> Dict[str, Any]:
 
 
 def print_summary(summary: Dict[str, Any]):
-    """Выводит сводку в консоль"""
     overall = summary["overall"]
     categories = summary["categories"]
 
     print(f"\n{'=' * 60}")
-    print(f"📊 СВОДКА A/B БЕНЧМАРКА RAG: {MODEL_NAME}")
+    print(f" СВОДКА A/B БЕНЧМАРКА RAG: {MODEL_NAME}")
     print(f"{'=' * 60}")
     print(f"Всего кейсов: {summary['total_cases']}")
     print()
@@ -418,8 +393,6 @@ def print_summary(summary: Dict[str, Any]):
               f"ингредиентов найдено={stats['avg_rag_ingredients_found']:.1f}")
     print(f"{'=' * 60}\n")
 
-
-# ==================== Точка входа ====================
 
 async def main():
     await run_ab_benchmark()

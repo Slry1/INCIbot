@@ -3,15 +3,11 @@ from llm.rag_module import IngredientRAG, RAGStatistics
 from llm.prompt_builder import PromptBuilder
 
 
-# ==================== Фикстура ====================
-
 @pytest.fixture(scope="module")
 def rag():
     """Загружает реальную базу знаний (создаётся один раз на все тесты)"""
     return IngredientRAG("data/ingredients.json")
 
-
-# ==================== Тесты поиска (search) ====================
 
 class TestSearchRealIngredients:
     """Поиск реальных ингредиентов из базы Renude"""
@@ -93,8 +89,6 @@ class TestSearchWithExtraSpaces:
         assert "short_description" in result
 
 
-# ==================== Тесты поиска несуществующих ингредиентов ====================
-
 class TestSearchNonexistent:
     """Поиск того, чего нет в базе"""
 
@@ -115,7 +109,6 @@ class TestSearchNonexistent:
 
 
 
-# ==================== Тесты enrich_prompt ====================
 
 class TestEnrichPromptRealIngredients:
     """Формирование справочного блока для промпта LLM"""
@@ -183,7 +176,6 @@ class TestEnrichPromptRealIngredients:
         assert "Действие:" in result or "what_does_it_do" in result.lower()
 
 
-# ==================== Тесты интеграции с PromptBuilder ====================
 
 class TestPromptBuilderWithRealRAG:
     """Интеграция RAG с PromptBuilder на реальных данных"""
@@ -204,7 +196,6 @@ class TestPromptBuilderWithRealRAG:
         assert "Cholesterol" in prompt
 
     def test_build_prompt_without_rag(self, rag):
-        """Промпт без RAG не содержит справочной информации"""
         prompt = PromptBuilder.build_prompt(
             skin_type="жирная",
             allergens=[],
@@ -216,7 +207,6 @@ class TestPromptBuilderWithRealRAG:
         assert "СПРАВОЧНАЯ ИНФОРМАЦИЯ" not in prompt
 
     def test_build_prompt_rag_does_not_break_structure(self, rag):
-        """RAG не ломает обязательные секции промпта"""
         prompt = PromptBuilder.build_prompt(
             skin_type="комбинированная",
             allergens=["спирт", "парабены"],
@@ -233,13 +223,12 @@ class TestPromptBuilderWithRealRAG:
         assert "Текущий состав для оценки: Cucumber Extract, Cholesterol" in prompt
 
 
-# ==================== Тесты производительности ====================
 
 class TestPerformance:
-    """Быстродействие на реальной базе"""
+
 
     def test_search_speed_100_iterations(self, rag):
-        """100 поисков — среднее время < 1 мс"""
+
         import time
 
         start = time.perf_counter()
@@ -251,7 +240,7 @@ class TestPerformance:
         assert avg_us < 1000, f"Слишком медленно: {avg_us:.0f}мкс (ожидалось < 1000мкс)"
 
     def test_enrich_prompt_speed_100_iterations(self, rag):
-        """100 enrich_prompt — среднее время < 5 мс"""
+
         import time
 
         composition = (
@@ -266,9 +255,6 @@ class TestPerformance:
 
         avg_us = (elapsed / 100) * 1_000_000
         assert avg_us < 5000, f"Слишком медленно: {avg_us:.0f}мкс (ожидалось < 5000мкс)"
-
-
-# ==================== Запуск ====================
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])

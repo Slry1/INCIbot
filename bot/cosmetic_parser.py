@@ -1,9 +1,3 @@
-"""
-cosmetic_parser.py — парсер состава косметических средств
-Поддерживает: Wildberries, Ozon, Золотое Яблоко
-Использование: передать ссылку на товар или название для поиска
-"""
-
 import re
 import asyncio
 import json
@@ -29,7 +23,7 @@ class ProductInfo:
     brand: str
     ingredients: str
     source_url: str
-    source: str  # "wildberries" | "ozon" | "zolotoe_yabloko" | "search"
+    source: str  # "wildberries" | "search"
 
     def __str__(self):
         return (
@@ -40,12 +34,6 @@ class ProductInfo:
 
 
 class WildberriesParser:
-    """
-    Парсинг через CDN Wildberries (card.json).
-    Состав, название и бренд извлекаются напрямую из JSON карточки товара.
-    Basket определяется автоматическим перебором.
-    """
-
     SEARCH_API = "https://www.wildberries.ru/__internal/search/exactmatch/ru/common/v18/search"
     CDN_TEMPLATE = "https://basket-{basket}.wbbasket.ru/vol{vol}/part{part}/{nm}/info/ru/card.json"
 
@@ -71,10 +59,6 @@ class WildberriesParser:
     async def fetch_card_data(
         self, session: aiohttp.ClientSession, nm_id: int
     ) -> Optional[dict]:
-        """
-        Получает полные данные карточки товара из CDN.
-        Возвращает словарь с данными или None.
-        """
         vol = nm_id // 100000
         part = nm_id // 1000
         basket = self.calc_numb_basket(vol)
@@ -101,19 +85,15 @@ class WildberriesParser:
 
     @staticmethod
     def _extract_composition(data: dict) -> Optional[str]:
-        """Извлекает состав из JSON карточки товара."""
-        # Ищем в options
         for option in data.get('options', []):
             if option.get('name') == 'Состав':
                 return option.get('value')
 
-        # Ищем в grouped_options
         for group in data.get('grouped_options', []):
             for option in group.get('options', []):
                 if option.get('name') == 'Состав':
                     return option.get('value')
 
-        # Ищем в compositions
         compositions = data.get('compositions', [])
         if compositions:
             return '; '.join(
@@ -124,7 +104,6 @@ class WildberriesParser:
 
     @staticmethod
     def _extract_ingredients_from_text(text: str) -> Optional[str]:
-        """Вытаскивает раздел 'Состав:' из текста описания."""
         if not text:
             return None
 
@@ -150,7 +129,6 @@ class WildberriesParser:
     async def fetch_by_article(
         self, session: aiohttp.ClientSession, article: str
     ) -> Optional[ProductInfo]:
-        """Получает полную информацию о товаре по артикулу через CDN"""
         nm_id = int(article)
         data = await self.fetch_card_data(session, nm_id)
 
@@ -178,7 +156,6 @@ class WildberriesParser:
         )
 
     def fetch_by_article_sync(self, article: str) -> Optional[ProductInfo]:
-        """Получает информацию о товаре через CDN (синхронно)"""
         nm_id = int(article)
         vol = nm_id // 100000
         part = nm_id // 1000
@@ -301,7 +278,6 @@ class WildberriesParser:
         return self.fetch_by_article_sync(article)
 
     def search_sync_multiple(self, query: str, limit: int = 5) -> List[dict]:
-        """Поиск по названию, возвращает список товаров (без состава)"""
 
         cookies = {
             '_wbauid': '3886396171766832830',
@@ -396,11 +372,6 @@ class WildberriesParser:
 
 
 class CosmeticParser:
-    """
-    Фасад: определяет источник по URL и вызывает нужный парсер.
-    При передаче названия — ищет на Wildberries.
-    """
-
     def __init__(self):
         self.wb = WildberriesParser()
 
@@ -421,27 +392,16 @@ class CosmeticParser:
 
     @staticmethod
     def looks_like_search_query(text: str) -> bool:
-        """
-        Эвристика: если текст короткий (< 120 символов) и не содержит запятых —
-        скорее всего это название товара, а не состав.
-        """
         stripped = text.strip()
         comma_count = stripped.count(",")
         word_count = len(stripped.split())
-        # Состав содержит много запятых (ингредиенты через запятую)
         if comma_count >= 3:
             return False
-        # Очень длинный текст без запятых тоже может быть описанием
         if word_count > 15 and comma_count == 0:
             return False
         return word_count <= 10
 
     async def parse(self, text: str) -> Optional[ProductInfo]:
-        """
-        Универсальный метод:
-        - URL WB/Ozon/ЗЯ → парсит напрямую
-        - Название → ищет на WB
-        """
         source = self.detect_source(text.strip())
         logger.info(f"CosmeticParser: source={source}, input={text[:80]}")
 
@@ -453,7 +413,6 @@ class CosmeticParser:
                 return None
 
             elif source == "search":
-                # Поиск по названию — сначала WB
                 logger.info(f"Searching WB for: {text}")
                 return await asyncio.to_thread(
                     self.wb.search_sync, text

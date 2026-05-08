@@ -1,7 +1,3 @@
-"""
-Бенчмарк-тестирование LLM для персонализированной оценки косметических составов.
-Используется в Главе 4 ВКР "Экспериментальная оценка и тестирование".
-"""
 import asyncio
 import json
 import time
@@ -16,7 +12,6 @@ from llm.prompt_builder import PromptBuilder
 
 @dataclass
 class TestProfile:
-    """Тестовый профиль пользователя (см. Таблицу 4.1 ВКР)"""
     profile_id: str
     skin_type: str
     allergens: List[str]
@@ -25,7 +20,6 @@ class TestProfile:
 
 @dataclass
 class TestCase:
-    """Один тестовый кейс: состав + профиль"""
     case_id: str
     name: str  # название средства
     ingredients: str  # состав
@@ -38,7 +32,6 @@ class TestCase:
 
 @dataclass
 class TestResult:
-    """Результат одного тестового прогона"""
     case_id: str
     profile_id: str
     category: str
@@ -58,16 +51,6 @@ class TestResult:
 
 
 class LLMBenchmark:
-    """
-    Класс для проведения бенчмарк-тестирования языковых моделей.
-
-    Используется для:
-    - Сравнения разных моделей по единой методике (Глава 4 ВКР)
-    - Замера метрик качества и производительности
-    - Выявления лучшей модели для production-контура
-    """
-
-    # Тестовые профили из Таблицы 4.1 ВКР
     PROFILES = {
         "A": TestProfile("A", "сухая", ["отдушка", "лаванда"], ["натуральные компоненты"]),
         "B": TestProfile("B", "жирная", ["спирт", "цитрусы"], ["матирующий эффект"]),
@@ -231,13 +214,6 @@ class LLMBenchmark:
     ) -> List[TestResult]:
         """
         Запускает полный бенчмарк на всех тестовых кейсах.
-
-        Args:
-            model_name: Название модели для отчёта (YandexGPT 5 Pro, DeepSeek и т.д.)
-            output_file: Путь для сохранения результатов
-
-        Returns:
-            Список результатов для каждого тестового кейса
         """
         client = YandexGPTClient()
         test_cases = self._get_test_cases()
@@ -250,7 +226,6 @@ class LLMBenchmark:
             logger.info(f"[{idx}/{len(test_cases)}] Тест {case.case_id}: "
                         f"{case.name} (профиль {case.profile.profile_id}, {case.category})")
 
-            # Формируем промпт
             prompt = PromptBuilder.build_prompt(
                 skin_type=case.profile.skin_type,
                 allergens=case.profile.allergens,
@@ -318,7 +293,6 @@ class LLMBenchmark:
         return results
 
     def _check_schema(self, parsed: Optional[Dict]) -> bool:
-        """Проверяет соответствие ответа требуемой JSON-схеме"""
         if not parsed:
             return False
         if "score" not in parsed:
@@ -335,7 +309,6 @@ class LLMBenchmark:
             model_name: str,
             output_file: str
     ):
-        """Сохраняет результаты в JSON-файл"""
         data = {
             "model": model_name,
             "total_cases": len(results),
@@ -348,10 +321,9 @@ class LLMBenchmark:
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
-        logger.info(f"📁 Результаты сохранены в {output_path}")
+        logger.info(f" Результаты сохранены в {output_path}")
 
     def _print_summary(self, results: List[TestResult], model_name: str):
-        """Выводит агрегированную статистику в консоль"""
         total = len(results)
         json_valid = sum(1 for r in results if r.json_valid)
         schema_valid = sum(1 for r in results if r.schema_valid)
@@ -359,7 +331,6 @@ class LLMBenchmark:
         times = [r.response_time_ms for r in results]
         total_tokens = sum(r.tokens.get("total_tokens", 0) for r in results)
 
-        # Разбивка по категориям
         by_category = {}
         for cat in ["simple", "medium", "complex", "provocative"]:
             cat_results = [r for r in results if r.category == cat]
@@ -373,7 +344,7 @@ class LLMBenchmark:
                 }
 
         print(f"\n{'=' * 60}")
-        print(f"📊 СВОДКА БЕНЧМАРКА: {model_name}")
+        print(f" СВОДКА БЕНЧМАРКА: {model_name}")
         print(f"{'=' * 60}")
         print(f"Всего кейсов:          {total}")
         print(f"JSON Valid:            {json_valid}/{total} ({json_valid / total * 100:.1f}%)")
@@ -396,10 +367,9 @@ class LLMBenchmark:
 class AllergenDetectionTester:
     """
     Отдельный тест для замера точности детекции аллергенов.
-    Метрика: Allergen Detection Rate (см. Таблицу 4.3 ВКР)
+    Метрика: Allergen Detection Rate
     """
 
-    # Тестовые пары "состав -> аллергены, которые модель ДОЛЖНА обнаружить"
     ALLERGEN_TEST_CASES = [
         {
             "name": "Крем с явной отдушкой",
@@ -448,9 +418,6 @@ class AllergenDetectionTester:
     async def run(self, model_name: str) -> Dict[str, Any]:
         """
         Запускает тест на детекцию аллергенов.
-
-        Returns:
-            Словарь с метриками: detection_rate, false_positive_rate, missed_rate
         """
         client = YandexGPTClient()
 
@@ -461,7 +428,7 @@ class AllergenDetectionTester:
         details = []
 
         logger.info(f"\n{'=' * 60}")
-        logger.info(f"🔬 ТЕСТ ДЕТЕКЦИИ АЛЛЕРГЕНОВ: {model_name}")
+        logger.info(f" ТЕСТ ДЕТЕКЦИИ АЛЛЕРГЕНОВ: {model_name}")
         logger.info(f"{'=' * 60}")
 
         for case in self.ALLERGEN_TEST_CASES:
@@ -486,7 +453,6 @@ class AllergenDetectionTester:
                 "explanation": parsed.get("explanation", "")
             }
 
-            # Проверяем обнаружение ожидаемых аллергенов
             for allergen in case["expected_allergens"]:
                 total_allergens += 1
                 allergen_lower = allergen.lower()
@@ -498,9 +464,7 @@ class AllergenDetectionTester:
                     case_detail[f"detected_{allergen}"] = False
                     logger.warning(f"❌ ПРОПУЩЕН АЛЛЕРГЕН: {allergen} в кейсе '{case['name']}'")
 
-            # Проверяем ложные срабатывания (предупреждения об аллергенах, которых нет в составе)
             if not case["expected_allergens"] and warnings:
-                # В составе нет аллергенов пользователя, но модель выдала предупреждения
                 allergy_related_warnings = [
                     w for w in warnings
                     if any(kw in w.lower() for kw in ["аллерг", "allerg", "реакц", "раздраж"])
@@ -515,7 +479,6 @@ class AllergenDetectionTester:
 
             details.append(case_detail)
 
-        # Итоговые метрики
         detection_rate = (detected / total_allergens * 100) if total_allergens > 0 else 100.0
         missed_rate = (missed / total_allergens * 100) if total_allergens > 0 else 0.0
 
@@ -530,7 +493,7 @@ class AllergenDetectionTester:
             "details": details
         }
 
-        print(f"\n📊 РЕЗУЛЬТАТЫ ДЕТЕКЦИИ АЛЛЕРГЕНОВ:")
+        print(f"\n РЕЗУЛЬТАТЫ ДЕТЕКЦИИ АЛЛЕРГЕНОВ:")
         print(f"   Всего аллергенов для обнаружения: {total_allergens}")
         print(f"   Обнаружено:    {detected} ({detection_rate:.1f}%)")
         print(f"   Пропущено:     {missed} ({missed_rate:.1f}%)")
@@ -544,10 +507,9 @@ class PersonalizationTester:
     """
     Тест проверки персонализации.
     Один состав → разные профили → замер разброса оценок (Δscore).
-    Метрика: средний разброс оценок между профилями (Таблица 4.3 ВКР)
+    Метрика: средний разброс оценок между профилями
     """
 
-    # Составы для проверки персонализации
     PERSONALIZATION_TEST_COMPOSITIONS = [
         {
             "name": "Увлажняющий крем с отдушкой",
@@ -563,7 +525,6 @@ class PersonalizationTester:
         },
     ]
 
-    # Профили для теста
     TEST_PROFILES = [
         TestProfile("A", "сухая", ["отдушка", "лаванда"], ["натуральные компоненты"]),
         TestProfile("B", "жирная", ["спирт", "цитрусы"], ["матирующий эффект"]),
@@ -573,18 +534,12 @@ class PersonalizationTester:
     ]
 
     async def run(self, model_name: str) -> Dict[str, Any]:
-        """
-        Запускает тест персонализации.
-
-        Returns:
-            Словарь с метриками: avg_delta_score, max_delta_score, per_composition_deltas
-        """
         client = YandexGPTClient()
         all_scores: Dict[str, List[int]] = {}
         details = []
 
         logger.info(f"\n{'=' * 60}")
-        logger.info(f"👤 ТЕСТ ПЕРСОНАЛИЗАЦИИ: {model_name}")
+        logger.info(f"ТЕСТ ПЕРСОНАЛИЗАЦИИ: {model_name}")
         logger.info(f"{'=' * 60}")
 
         for comp in self.PERSONALIZATION_TEST_COMPOSITIONS:
@@ -609,7 +564,6 @@ class PersonalizationTester:
                             f"({profile.skin_type}, аллергия на {profile.allergens}): "
                             f"score={score}")
 
-            # Считаем разброс
             scores_list = list(comp_scores.values())
             delta = max(scores_list) - min(scores_list) if scores_list else 0
             all_scores[comp["name"]] = scores_list
@@ -623,9 +577,8 @@ class PersonalizationTester:
                 "profiles_count": len(scores_list)
             })
 
-            logger.info(f"  📊 Разброс (Δscore): {delta} баллов")
+            logger.info(f" Разброс (Δscore): {delta} баллов")
 
-        # Агрегированные метрики
         deltas = [d["delta_score"] for d in details]
         avg_delta = sum(deltas) / len(deltas) if deltas else 0
 
@@ -639,7 +592,7 @@ class PersonalizationTester:
             "details": details
         }
 
-        print(f"\n📊 РЕЗУЛЬТАТЫ ПЕРСОНАЛИЗАЦИИ:")
+        print(f"\n РЕЗУЛЬТАТЫ ПЕРСОНАЛИЗАЦИИ:")
         print(f"   Средний разброс оценок (Δscore): {avg_delta:.1f} балла")
         print(f"   Максимальный разброс:             {max(deltas) if deltas else 0} балла")
         for d in details:
@@ -649,36 +602,32 @@ class PersonalizationTester:
         return results
 
 
-# ============= ТОЧКА ВХОДА =============
 
 async def main():
-    """Запускает все три типа тестов для выбранной модели."""
-
-    # Укажите название тестируемой модели
     MODEL_NAME = "DeepSeek3.2"
 
     # 1. Основной бенчмарк (все 20 кейсов)
-    #benchmark = LLMBenchmark()
-    #benchmark_results = await benchmark.run_benchmark(
-    #    model_name=MODEL_NAME,
-    #    output_file=f"results/benchmark_{MODEL_NAME.replace(' ', '_').lower()}.json"
-    #)
-    #
-    ## 2. Тест детекции аллергенов
-    #allergen_tester = AllergenDetectionTester()
-    #allergen_results = await allergen_tester.run(MODEL_NAME)
-    #
-    #with open(f"results/allergen_test_{MODEL_NAME.replace(' ', '_').lower()}.json", "w", encoding="utf-8") as f:
-    #    json.dump(allergen_results, f, ensure_ascii=False, indent=2)
-    #
-    ## 3. Тест персонализации
-    #personalization_tester = PersonalizationTester()
-    #personalization_results = await personalization_tester.run(MODEL_NAME)
-    #
-    #with open(f"results/personalization_{MODEL_NAME.replace(' ', '_').lower()}.json", "w", encoding="utf-8") as f:
-    #    json.dump(personalization_results, f, ensure_ascii=False, indent=2)
-    #
-    print("\n✅ Все тесты завершены! Результаты сохранены в папке results/")
+    benchmark = LLMBenchmark()
+    benchmark_results = await benchmark.run_benchmark(
+        model_name=MODEL_NAME,
+        output_file=f"results/benchmark_{MODEL_NAME.replace(' ', '_').lower()}.json"
+    )
+
+    # 2. Тест детекции аллергенов
+    allergen_tester = AllergenDetectionTester()
+    allergen_results = await allergen_tester.run(MODEL_NAME)
+
+    with open(f"results/allergen_test_{MODEL_NAME.replace(' ', '_').lower()}.json", "w", encoding="utf-8") as f:
+        json.dump(allergen_results, f, ensure_ascii=False, indent=2)
+
+    # 3. Тест персонализации
+    personalization_tester = PersonalizationTester()
+    personalization_results = await personalization_tester.run(MODEL_NAME)
+
+    with open(f"results/personalization_{MODEL_NAME.replace(' ', '_').lower()}.json", "w", encoding="utf-8") as f:
+        json.dump(personalization_results, f, ensure_ascii=False, indent=2)
+
+    print("\n Все тесты завершены")
 
 
 if __name__ == "__main__":
