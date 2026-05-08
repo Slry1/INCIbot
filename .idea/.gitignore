@@ -1,0 +1,8 @@
+# Default ignored files
+/shelf/
+/workspace.xml
+.env
+venv/
+__pycache__/
+*.pyc
+.DS_Store
