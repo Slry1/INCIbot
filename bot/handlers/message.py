@@ -28,8 +28,6 @@ class SearchCancelCallback(CallbackData, prefix="cancel_search"):
     pass
 
 
-# ─── Вспомогательные функции ─────────────────────────────────────────────────
-
 def _is_url(text: str) -> bool:
     lower = text.lower()
     return any(domain in lower for domain in (
