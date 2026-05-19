@@ -10,14 +10,28 @@ from database.repository import DatabaseRepository
 from llm.yandex_client import YandexGPTClient
 from llm.prompt_builder import PromptBuilder
 from llm.rag_module import IngredientRAG
+from llm.verifier import ResponseVerifier
+from llm.sanitizer import InputSanitizer, ThreatLevel
+from llm.rate_limiter import RateLimiter
 from bot.cosmetic_parser import CosmeticParser, ProductInfo
+from config import config
 import asyncio
 
 router = Router()
 _cosmetic_parser = CosmeticParser()
-_rag = IngredientRAG()
+_rag = IngredientRAG(kb_path=config.RAG_DATA_PATH)
+_verifier = ResponseVerifier()
+_rate_limiter = RateLimiter()
 
 user_search_cache = {}
+
+
+async def safe_edit(msg: Message, text: str, **kwargs) -> None:
+    try:
+        await msg.edit_text(text, **kwargs)
+    except Exception as e:
+        if "message is not modified" not in str(e):
+            raise
 
 
 class ProductSelectCallback(CallbackData, prefix="prod"):
@@ -43,7 +57,6 @@ def _is_product_name(text: str) -> bool:
 
 def build_search_results_keyboard(products: list[dict]) -> InlineKeyboardMarkup:
     buttons = []
-
     for i, p in enumerate(products, 1):
         name = p['name'][:40] + "..." if len(p['name']) > 40 else p['name']
         text = f"{i}. {name} | {p['brand']} | {p['price']}₽"
@@ -53,30 +66,139 @@ def build_search_results_keyboard(products: list[dict]) -> InlineKeyboardMarkup:
                 callback_data=ProductSelectCallback(nm_id=p['id']).pack()
             )
         ])
-
     buttons.append([
         InlineKeyboardButton(
             text="❌ Отмена",
             callback_data=SearchCancelCallback().pack()
         )
     ])
-
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+def _format_answer(
+    response: dict,
+    product_info: ProductInfo | None,
+    was_corrected: bool,
+) -> str:
+    score = response.get("score", 0)
+    explanation = response.get("explanation", "Оценка сформирована")
+    warnings = response.get("warnings", [])
+    recommendations = response.get("recommendations", [])
+
+    stars = "⭐️" * (score // 2) + "☆" * (5 - (score // 2))
+
+    if product_info:
+        title_line = (
+            f"📊 <b>Оценка: {score}/10</b> — "
+            f"{product_info.name}"
+            + (f" ({product_info.brand})" if product_info.brand else "")
+        )
+    else:
+        title_line = f"📊 <b>Оценка состава: {score}/10</b>"
+
+    verifier_note = (
+        "\n🔍 <i>Ответ прошёл верификацию. Обнаружены неточности — оценка скорректирована.</i>\n"
+        if was_corrected else ""
+    )
+
+    text = (
+        f"{title_line}\n"
+        f"{stars}"
+        f"{verifier_note}\n"
+        f"📝 <b>Пояснение:</b>\n{explanation}\n\n"
+    )
+
+    if warnings:
+        text += "⚠️ <b>Предупреждения:</b>\n"
+        for w in warnings:
+            text += f"• {w}\n"
+        text += "\n"
+
+    if recommendations:
+        text += "💡 <b>Рекомендации:</b>\n"
+        for r in recommendations:
+            text += f"• {r}\n"
+
+    if product_info:
+        text += f"\n🔗 <a href='{product_info.source_url}'>Ссылка на товар</a>\n"
+
+    text += "\n<i>⚠️ Оценка носит рекомендательный характер и сгенерирована при помощи ИИ. Перед использованием проведите патч-тест.</i>"
+
+    return text
+
+
+async def _evaluate_and_verify(
+    llm_client: YandexGPTClient,
+    prompt: str,
+    ingredients: str,
+    skin_type: str,
+    allergens: list,
+    status_message: Message,
+    source: str = "user",
+    telegram_id: int = None,
+) -> tuple[dict, bool]:
+    san = InputSanitizer.check(ingredients, source=source)
+
+    if not san.is_safe:
+        async for session in get_session():
+            repo = DatabaseRepository(session)
+            await repo.log_security_event(
+                telegram_id=telegram_id,
+                threat_level=san.threat_level.value,
+                threat_type=san.threat_type,
+                source=source,
+                input_text=ingredients,
+                action_taken="blocked" if san.threat_level.value == "high" else "neutralized",
+            )
+            break
+
+        if san.threat_level.value == "high":
+            await safe_edit(status_message, "⚠️ Обнаружена попытка манипуляции с данными.")
+            return {
+                "score": 0,
+                "explanation": "Входные данные содержат недопустимые инструкции. Пожалуйста, отправьте только состав косметического средства в формате INCI.",
+                "warnings": [],
+                "recommendations": [],
+                "_injection_blocked": True,
+            }, False
+        else:
+            ingredients = InputSanitizer.neutralize(ingredients)
+
+    response = await llm_client.generate_response(prompt)
+
+    if not response or response.get("score") is None:
+        return response, False
+
+    if _verifier.enabled:
+        await safe_edit(status_message, "🔍 Проверяю ответ на точность...")
+
+        verification = await _verifier.verify(
+            ingredients=ingredients,
+            llm_response=response,
+            skin_type=skin_type,
+            allergens=allergens,
+        )
+
+        corrected = _verifier.apply_corrections(response, verification)
+        was_corrected = not verification.verified and not verification.verifier_failed
+
+        return corrected, was_corrected
+
+    return response, False
+
+
 async def process_product(
-        message: Message,
-        nm_id: int,
-        user,
-        llm_client: YandexGPTClient,
-        status_msg: Message
+    message: Message,
+    nm_id: int,
+    user,
+    llm_client: YandexGPTClient,
+    status_msg: Message,
 ):
     import aiohttp
 
     start_time = time.time()
 
-    await status_msg.delete()
-    loading_msg = await message.answer("🔗 Загружаю состав товара...")
+    await safe_edit(status_msg, "🔗 Загружаю состав товара...")
 
     composition = None
     product_info = None
@@ -86,16 +208,14 @@ async def process_product(
         if product_info:
             composition = product_info.ingredients
 
-    await loading_msg.delete()
-
     if not composition or composition == "Состав не найден":
-        await message.answer(
+        await safe_edit(status_msg,
             "😔 Не удалось получить состав для этого товара.\n"
             "Попробуйте другой товар или вставьте состав вручную."
         )
         return
 
-    analyzing_msg = await message.answer("🤖 Анализирую состав...")
+    await safe_edit(status_msg, "🤖 Анализирую состав...")
 
     prompt = PromptBuilder.build_prompt(
         skin_type=user.skin_type,
@@ -104,53 +224,25 @@ async def process_product(
         name=product_info.name if product_info else "",
         ingredients=composition,
         history=[],
-        rag=_rag
+        rag=_rag,
     )
 
-    response = await llm_client.generate_response(prompt)
-    processing_time = int((time.time() - start_time) * 1000)
+    response, was_corrected = await _evaluate_and_verify(
+        llm_client=llm_client,
+        prompt=prompt,
+        ingredients=composition,
+        skin_type=user.skin_type or "",
+        allergens=user.allergens or [],
+        status_message=status_msg,
+        source="wildberries",
+        telegram_id=message.from_user.id,
+    )
 
-    await analyzing_msg.delete()
+    processing_time = int((time.time() - start_time) * 1000)
+    await status_msg.delete()
 
     if response and response.get("score") is not None:
-        score = response.get("score", 0)
-        explanation = response.get("explanation", "Оценка сформирована")
-        warnings = response.get("warnings", [])
-        recommendations = response.get("recommendations", [])
-
-        stars = "⭐️" * (score // 2) + "☆" * (5 - (score // 2))
-
-        if product_info:
-            title_line = (
-                    f"📊 <b>Оценка: {score}/10</b> — "
-                    f"{product_info.name}"
-                    + (f" ({product_info.brand})" if product_info.brand else "")
-            )
-        else:
-            title_line = f"📊 <b>Оценка состава: {score}/10</b>"
-
-        answer_text = (
-            f"{title_line}\n"
-            f"{stars}\n\n"
-            f"📝 <b>Пояснение:</b>\n{explanation}\n\n"
-        )
-
-        if warnings:
-            answer_text += "⚠️ <b>Предупреждения:</b>\n"
-            for w in warnings:
-                answer_text += f"• {w}\n"
-            answer_text += "\n"
-
-        if recommendations:
-            answer_text += "💡 <b>Рекомендации:</b>\n"
-            for r in recommendations:
-                answer_text += f"• {r}\n"
-
-        if product_info:
-            answer_text += f"\n🔗 <a href='{product_info.source_url}'>Ссылка на товар</a>\n"
-
-        answer_text += "\n<i>⚠️ Оценка носит рекомендательный характер и сгенерирована при помощи ИИ.</i>"
-
+        answer_text = _format_answer(response, product_info, was_corrected)
         await message.answer(answer_text, parse_mode="HTML")
 
         async for session in get_session():
@@ -159,9 +251,9 @@ async def process_product(
                 user_id=user.id,
                 user_message=product_info.name if product_info else f"Товар {nm_id}",
                 llm_response_raw=str(response),
-                llm_response_parsed=response,
+                llm_response_parsed=response,   # содержит _verified и _corrections
                 prompt_used=prompt,
-                processing_time_ms=processing_time
+                processing_time_ms=processing_time,
             )
             break
     else:
@@ -181,7 +273,7 @@ async def prompt_ingredients(message: Message):
         "• Вставить <b>состав</b> напрямую (Aqua, Glycerin, ...)\n\n"
         "Пример ссылки: https://www.wildberries.ru/catalog/12345678/detail.aspx\n"
         "Пример названия: <i>Крем для лица Cerave увлажняющий</i>",
-        parse_mode="HTML"
+        parse_mode="HTML",
     )
 
 
@@ -189,6 +281,23 @@ async def prompt_ingredients(message: Message):
 async def handle_message(message: Message, state: FSMContext, llm_client: YandexGPTClient):
     start_time = time.time()
     text = message.text.strip()
+
+    rl = await _rate_limiter.acquire(message.from_user.id)
+    if not rl.allowed:
+        limit_labels = {
+            "burst": "слишком много запросов подряд",
+            "rpm":   "превышен лимит запросов в минуту",
+            "rph":   "превышен лимит запросов в час",
+        }
+        reason = limit_labels.get(rl.limit_type, "превышен лимит запросов")
+        minutes = (rl.retry_after_seconds or 60) // 60
+        seconds = (rl.retry_after_seconds or 60) % 60
+        wait_str = f"{minutes} мин {seconds} сек" if minutes else f"{seconds} сек"
+        await message.answer(
+            f"⏳ {reason.capitalize()}.\n"
+            f"Пожалуйста, подождите {wait_str} перед следующим запросом."
+        )
+        return
 
     async for session in get_session():
         repo = DatabaseRepository(session)
@@ -210,13 +319,13 @@ async def handle_message(message: Message, state: FSMContext, llm_client: Yandex
 
         if product_info and product_info.ingredients != "Состав не найден":
             ingredients_text = product_info.ingredients
-            await status_msg.edit_text(
+            await safe_edit(status_msg,
                 f"✅ Нашёл продукт: <b>{product_info.name}</b>"
                 + (f" ({product_info.brand})" if product_info.brand else ""),
-                parse_mode="HTML"
+                parse_mode="HTML",
             )
         else:
-            await status_msg.edit_text(
+            await safe_edit(status_msg,
                 "😔 Не удалось получить состав автоматически.\n\n"
                 "Попробуйте:\n"
                 "• Проверить ссылку (откройте её в браузере)\n"
@@ -233,10 +342,10 @@ async def handle_message(message: Message, state: FSMContext, llm_client: Yandex
         )
 
         if not products:
-            await status_msg.edit_text(
+            await safe_edit(status_msg,
                 f"❌ По запросу <b>{text}</b> ничего не найдено.\n"
                 "Попробуйте уточнить название или вставьте состав вручную.",
-                parse_mode="HTML"
+                parse_mode="HTML",
             )
             return
 
@@ -250,11 +359,7 @@ async def handle_message(message: Message, state: FSMContext, llm_client: Yandex
         response_text += "👇 <b>Выберите товар для оценки состава:</b>"
 
         keyboard = build_search_results_keyboard(products)
-        await status_msg.edit_text(
-            response_text,
-            reply_markup=keyboard,
-            parse_mode="HTML"
-        )
+        await safe_edit(status_msg, response_text, reply_markup=keyboard, parse_mode="HTML")
         return
 
     else:
@@ -262,10 +367,7 @@ async def handle_message(message: Message, state: FSMContext, llm_client: Yandex
         status_msg = None
 
     if not _is_product_name(text) or (_is_url(text) and product_info):
-        if not status_msg:
-            analyzing_msg = await message.answer("🤖 Анализирую состав...")
-        else:
-            analyzing_msg = await message.answer("🤖 Анализирую состав...")
+        analyzing_msg = await message.answer("🤖 Анализирую состав...")
 
         prompt = PromptBuilder.build_prompt(
             skin_type=user.skin_type,
@@ -274,50 +376,24 @@ async def handle_message(message: Message, state: FSMContext, llm_client: Yandex
             name=product_info.name if product_info else "",
             ingredients=ingredients_text,
             history=history,
-            rag=_rag
+            rag=_rag,
         )
 
-        response = await llm_client.generate_response(prompt)
+        response, was_corrected = await _evaluate_and_verify(
+            llm_client=llm_client,
+            prompt=prompt,
+            ingredients=ingredients_text,
+            skin_type=user.skin_type or "",
+            allergens=user.allergens or [],
+            status_message=analyzing_msg,
+            source="user",
+            telegram_id=message.from_user.id,
+        )
+
         processing_time = int((time.time() - start_time) * 1000)
 
         if response and response.get("score") is not None:
-            score = response.get("score", 0)
-            explanation = response.get("explanation", "Оценка сформирована")
-            warnings = response.get("warnings", [])
-            recommendations = response.get("recommendations", [])
-
-            stars = "⭐️" * (score // 2) + "☆" * (5 - (score // 2))
-
-            if product_info:
-                title_line = (
-                        f"📊 <b>Оценка: {score}/10</b> — "
-                        f"{product_info.name}"
-                        + (f" ({product_info.brand})" if product_info.brand else "")
-                )
-            else:
-                title_line = f"📊 <b>Оценка состава: {score}/10</b>"
-
-            answer_text = (
-                f"{title_line}\n"
-                f"{stars}\n\n"
-                f"📝 <b>Пояснение:</b>\n{explanation}\n\n"
-            )
-
-            if warnings:
-                answer_text += "⚠️ <b>Предупреждения:</b>\n"
-                for w in warnings:
-                    answer_text += f"• {w}\n"
-                answer_text += "\n"
-
-            if recommendations:
-                answer_text += "💡 <b>Рекомендации:</b>\n"
-                for r in recommendations:
-                    answer_text += f"• {r}\n"
-
-            if product_info:
-                answer_text += f"\n🔗 <a href='{product_info.source_url}'>Ссылка на товар</a>\n"
-
-            answer_text += "\n<i>⚠️ Оценка носит рекомендательный характер и сгенерирована при помощи ИИ. Перед использованием проведите патч-тест.</i>"
+            answer_text = _format_answer(response, product_info, was_corrected)
 
             await analyzing_msg.delete()
             await message.answer(answer_text, parse_mode="HTML")
@@ -330,7 +406,7 @@ async def handle_message(message: Message, state: FSMContext, llm_client: Yandex
                     llm_response_raw=str(response),
                     llm_response_parsed=response,
                     prompt_used=prompt,
-                    processing_time_ms=processing_time
+                    processing_time_ms=processing_time,
                 )
                 break
         else:
@@ -341,15 +417,13 @@ async def handle_message(message: Message, state: FSMContext, llm_client: Yandex
             )
 
 
-
 @router.callback_query(ProductSelectCallback.filter())
 async def on_product_select(
-        callback: CallbackQuery,
-        callback_data: ProductSelectCallback,
-        llm_client: YandexGPTClient
+    callback: CallbackQuery,
+    callback_data: ProductSelectCallback,
+    llm_client: YandexGPTClient,
 ):
     nm_id = callback_data.nm_id
-
     await callback.answer("Загружаю состав...")
 
     async for session in get_session():
@@ -357,15 +431,18 @@ async def on_product_select(
         user = await repo.get_or_create_user(callback.from_user.id)
         break
 
-    status_msg = await callback.message.edit_text("🔗 Загружаю состав товара...")
-
-    # Обрабатываем товар
+    try:
+        status_msg = await callback.message.edit_text("🔗 Загружаю состав товара...")
+    except Exception as e:
+        if "message is not modified" in str(e):
+            status_msg = callback.message
+        else:
+            raise
     await process_product(callback.message, nm_id, user, llm_client, status_msg)
 
 
 @router.callback_query(SearchCancelCallback.filter())
 async def on_search_cancel(callback: CallbackQuery):
     await callback.answer("Поиск отменен")
-    await callback.message.edit_text("❌ Поиск отменен")
-
+    await safe_edit(callback.message, "❌ Поиск отменен")
     user_search_cache.pop(callback.from_user.id, None)

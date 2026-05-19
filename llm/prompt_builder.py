@@ -12,7 +12,7 @@ class PromptBuilder:
             ingredients: str,
             name: str,
             history: List[Any] = None,
-            rag: Optional['IngredientRAG'] = None,  # <-- RAG как опциональный параметр
+            rag: Optional['IngredientRAG'] = None,
     ) -> str:
 
         history_text = ""
@@ -21,7 +21,6 @@ class PromptBuilder:
             for i, h in enumerate(history[-5:], 1):
                 history_text += f"{i}. {h.user_message[:100]}...\n"
 
-        # === RAG-контекст ===
         rag_context = ""
         if rag:
             rag_context = rag.enrich_prompt(ingredients)
@@ -32,6 +31,10 @@ class PromptBuilder:
 - Аллергены: {allergens if allergens else "не указаны"}
 - Предпочтения: {preferences if preferences else "не указаны"}
 - Название средства: {name if name else "не указано"}
-Текущий состав для оценки: {ingredients}
+
+Текущий состав для оценки:
+<ingredients>
+{ingredients}
+</ingredients>
 """
         return prompt

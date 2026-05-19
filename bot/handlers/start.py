@@ -27,7 +27,6 @@ agree_keyboard = ReplyKeyboardMarkup(
 
 
 class AgreementCallback(CallbackData, prefix="agree"):
-    """Callback для принятия пользовательского соглашения"""
     action: str
 
 
@@ -68,7 +67,7 @@ async def cmd_start(message: Message, state: FSMContext):
             "🔍 <b>Поиск по названию</b> — напиши название средства, и я найду его\n"
             "📋 <b>Оценка состава</b> — отправь список ингредиентов напрямую\n"
             "👤 <b>Персонализация</b> — учёт твоего типа кожи, аллергенов и предпочтений\n"
-            "📊 <b>Умный анализ</b> — использую нейросеть YandexGPT и базу знаний "
+            "📊 <b>Умный анализ</b> — использую нейросеть DeepSeek и базу знаний "
             "из 248+ косметических ингредиентов\n\n"
             "⚠️ <b>Важно:</b> перед использованием бота необходимо ознакомиться "
             "и согласиться с условиями обработки персональных данных."
@@ -77,7 +76,6 @@ async def cmd_start(message: Message, state: FSMContext):
         await show_agreement(message)
 
 async def show_agreement(message: Message):
-    """Показывает пользовательское соглашение и запрашивает согласие"""
     agreement_text = (
         "📜 <b>ПОЛЬЗОВАТЕЛЬСКОЕ СОГЛАШЕНИЕ</b>\n"
         "и согласие на обработку персональных данных\n\n"
@@ -114,7 +112,6 @@ async def show_agreement(message: Message):
 
 @router.message(F.text == "✅ Согласен")
 async def on_agreement_accepted(message: Message):
-    """Пользователь принял соглашение"""
     async for session in get_session():
         repo = DatabaseRepository(session)
         user = await repo.get_or_create_user(
@@ -139,7 +136,6 @@ async def on_agreement_accepted(message: Message):
 
 @router.message(F.text == "❌ Отказаться")
 async def on_agreement_declined(message: Message):
-    """Пользователь отказался от соглашения"""
     await message.answer(
         "😔 <b>Вы отказались от обработки данных.</b>\n\n"
         "К сожалению, без согласия на обработку персональных данных "
@@ -154,13 +150,11 @@ async def on_agreement_declined(message: Message):
 
 @router.message(Command("agreement"))
 async def cmd_agreement(message: Message):
-    """Повторный показ пользовательского соглашения"""
     await show_agreement(message)
 
 
 @router.message(Command("delete_data"))
 async def cmd_delete_data(message: Message):
-    """Удаление данных пользователя (право на забвение)"""
     async for session in get_session():
         repo = DatabaseRepository(session)
         user = await repo.get_or_create_user(
@@ -185,7 +179,6 @@ async def cmd_delete_data(message: Message):
 
 @router.message(Command("my_data"))
 async def cmd_my_data(message: Message):
-    """Показывает данные пользователя, которые хранятся в системе"""
     async for session in get_session():
         repo = DatabaseRepository(session)
         user = await repo.get_or_create_user(message.from_user.id)
@@ -195,7 +188,7 @@ async def cmd_my_data(message: Message):
     profile_text = (
         "📋 <b>Информация о хранимых данных</b>\n\n"
         f"🆔 Telegram ID: {user.telegram_id}\n"
-        f"👤 Имя: {user.first_name or 'не указано'}\n"
+        f"👤 Имя: {user.username or 'не указано'}\n"
         f"📅 Первое обращение: {user.first_seen.strftime('%d.%m.%Y %H:%M') if user.first_seen else 'неизвестно'}\n"
         f"🕐 Последняя активность: {user.last_active.strftime('%d.%m.%Y %H:%M') if user.last_active else 'неизвестно'}\n"
         f"🧴 Тип кожи: {user.skin_type or 'не указан'}\n"
@@ -214,7 +207,6 @@ async def cmd_my_data(message: Message):
 @router.message(F.text == "❓ Помощь")
 @router.message(Command("help"))
 async def cmd_help(message: Message):
-    """Расширенная справка по использованию бота"""
     help_text = (
         "📖 <b>Как пользоваться INCIbot</b>\n\n"
         "🤖 <b>Я — чат-бот для персонализированной оценки косметики.</b>\n"
@@ -299,3 +291,50 @@ async def cmd_how_it_works(message: Message):
 async def cmd_settings_alias(message: Message, state: FSMContext):
     from bot.handlers.profile import start_settings
     await start_settings(message, state)
+
+@router.message(Command("stats"))
+async def cmd_stats(message: Message):
+    from config import config
+
+    if message.from_user.id not in config.ADMIN_IDS:
+        return
+
+    async for session in get_session():
+        repo = DatabaseRepository(session)
+        stats = await repo.get_global_stats()
+        break
+
+    sec = stats.get("security", {})
+    by_level = sec.get("by_level", {})
+    by_source = sec.get("by_source", {})
+    by_action = sec.get("by_action", {})
+    by_type = sec.get("by_type", [])
+
+    top_types = ""
+    for item in by_type[:5]:
+        top_types += f"  • {item['type']}: {item['count']}\n"
+    if not top_types:
+        top_types = "  нет данных\n"
+
+    stats_text = (
+        "📊 <b>Статистика системы INCIbot</b>\n\n"
+
+        "👥 <b>Пользователи и запросы:</b>\n"
+        f"  Всего пользователей: {stats['total_users']}\n"
+        f"  Всего запросов: {stats['total_queries']}\n\n"
+
+        "🔐 <b>Безопасность — события:</b>\n"
+        f"  Всего событий: {sec.get('total_events', 0)}\n"
+        f"  HIGH (заблокировано): {by_level.get('high', 0)}\n"
+        f"  LOW (нейтрализовано): {by_level.get('low', 0)}\n"
+        f"  Уникальных нарушителей: {sec.get('unique_attackers', 0)}\n\n"
+
+        "📌 <b>Источник атак:</b>\n"
+        f"  От пользователя: {by_source.get('user', 0)}\n"
+        f"  Через Wildberries: {by_source.get('wildberries', 0)}\n\n"
+
+        "🎯 <b>Топ типов атак:</b>\n"
+        f"{top_types}"
+    )
+
+    await message.answer(stats_text, parse_mode="HTML")

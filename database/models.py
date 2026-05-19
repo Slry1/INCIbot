@@ -19,7 +19,7 @@ class User(Base):
     skin_type = Column(String(50), nullable=True)
     allergens = Column(JSON, default=list)
     preferences = Column(JSON, default=list)
-    agreement_accepted = Column(Boolean, default=False)  # <-- новое поле
+    agreement_accepted = Column(Boolean, default=False)
 
 
 class History(Base):
@@ -33,3 +33,16 @@ class History(Base):
     llm_response_parsed = Column(JSON, nullable=True)
     prompt_used = Column(Text, nullable=True)
     processing_time_ms = Column(Integer, nullable=True)
+
+
+class SecurityEvent(Base):
+    __tablename__ = "security_events"
+
+    id           = Column(Integer, primary_key=True)
+    timestamp    = Column(DateTime, default=datetime.datetime.now(datetime.UTC), nullable=False, index=True)
+    telegram_id  = Column(BigInteger, nullable=True, index=True)
+    threat_level = Column(String(10),  nullable=False)
+    threat_type  = Column(String(50),  nullable=True)
+    source       = Column(String(30),  nullable=True)
+    input_fragment = Column(String(200), nullable=True)
+    action_taken = Column(String(20),  nullable=False)

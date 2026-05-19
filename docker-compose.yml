@@ -1,0 +1,61 @@
+#docker-compose.yml
+#docker compose up --build
+#docker compose -f docker-compose.yml up -d bot
+#docker compose down
+
+services:
+
+
+  db:
+    image: postgres:16-alpine
+    container_name: incibot_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-incibot}
+      POSTGRES_USER:     ${POSTGRES_USER:-incibot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-incibot} -d ${POSTGRES_DB:-incibot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - incibot_net
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: incibot_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-incibot}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-incibot}
+      RAG_DATA_PATH: /app/llm/data/ingredients.json
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./llm/data/ingredients.json:/app/llm/data/ingredients.json:ro
+    networks:
+      - incibot_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
+    name: incibot_postgres_data
+
+networks:
+  incibot_net:
+    name: incibot_network

@@ -1,26 +1,41 @@
 import json
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from pathlib import Path
 from loguru import logger
 
 
 class IngredientRAG:
-    def __init__(self, kb_path: str = "C:\\Users\\timof\yandexgpt_bot\llm\data\ingredients.json"):
-        with open(kb_path, 'r', encoding='utf-8') as f:
+    def __init__(self, kb_path: Optional[str] = None):
+        if kb_path is None:
+            from config import config
+            kb_path = config.RAG_DATA_PATH
+
+        path = Path(kb_path)
+        if not path.exists():
+            raise FileNotFoundError(
+                f"RAG: файл базы знаний не найден: {path}\n"
+                f"Проверьте переменную RAG_DATA_PATH в .env или положите "
+                f"ingredients.json по пути llm/data/ingredients.json"
+            )
+
+        with open(path, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
         self.source = data["source"]
         self.ingredients: List[Dict] = data["ingredients"]
         self._build_index()
 
-        logger.info(f"RAG инициализирован: {len(self.ingredients)} ингредиентов из {self.source}")
+        logger.info(
+            f"RAG инициализирован: {len(self.ingredients)} ингредиентов "
+            f"из {self.source} ({path})"
+        )
 
     def _build_index(self):
-        """Строит индекс для быстрого поиска"""
-        self.exact_index = {}  # точное совпадение имени
-        self.sci_index = {}  # по научному названию
-        self.word_index = {}  # по отдельным словам
+        """Строит индекс для быстрого поиска."""
+        self.exact_index = {}
+        self.sci_index = {}
+        self.word_index = {}
 
         for ing in self.ingredients:
             name = ing["name"].lower().strip()
@@ -36,7 +51,6 @@ class IngredientRAG:
         'extract', 'oil', 'acid', 'water', 'powder', 'juice',
         'butter', 'wax', 'seed', 'fruit', 'leaf', 'root',
         'flower', 'peel', 'kernel', 'milk', 'protein',
-        'extract', 'oil', 'water', 'powder', 'juice',
         'sodium', 'potassium', 'magnesium', 'calcium',
         'alcohol', 'glycol', 'glycerin', 'sorbitan',
         'cetearyl', 'cetyl', 'stearyl', 'stearate',
@@ -44,63 +58,54 @@ class IngredientRAG:
 
     def search(self, ingredient_text: str) -> Optional[Dict]:
         text = ingredient_text.strip()
-        text = re.sub(r'[\n\r\t]+', ', ', text)  # переносы строк → пробелы
-        text = re.sub(r'\s+', ' ', text)  # множественные пробелы → один
+        text = re.sub(r'[\n\r\t]+', ', ', text)
+        text = re.sub(r'\s+', ' ', text)
         text = text.strip()
         text_lower = text.lower()
-
 
         if not text_lower:
             return None
 
-        # 1. Точное совпадение
         if text_lower in self.exact_index:
             return self.exact_index[text_lower]
 
-        # 2. Совпадение без скобок
         cleaned = re.sub(r'\([^)]*\)', '', text_lower).strip()
         if cleaned and cleaned != text_lower and cleaned in self.exact_index:
             return self.exact_index[cleaned]
 
-        # 3. Поиск по научному названию
         if hasattr(self, 'sci_index') and text_lower in self.sci_index:
             return self.sci_index[text_lower]
 
-        # 4. Частичное совпадение проверяем ПАРЫ соседних слов из запроса
         words = re.split(r'[\s/-]+', text_lower)
-        words = [w for w in words if w]  # убираем пустые
+        words = [w for w in words if w]
 
-        # Если одно слово и оно стоп-слово — не ищем
         if len(words) == 1 and words[0] in self.STOP_WORDS:
             return None
 
-        # Если несколько слов — ищем точное вхождение ПАРЫ слов
         if len(words) >= 2:
             for i in range(len(words) - 1):
                 pair = f"{words[i]} {words[i + 1]}"
-                # Ищем в названиях ингредиентов
                 for name, ing in self.exact_index.items():
                     if pair in name:
                         return ing
 
-            # Ищем одно значимое слово (не стоп-слово)
-            significant_words = [w for w in words if w not in self.STOP_WORDS and len(w) > 2]
+            significant_words = [
+                w for w in words
+                if w not in self.STOP_WORDS and len(w) > 2
+            ]
             if significant_words:
-                # Ищем самое длинное значимое слово в названиях
                 for word in sorted(significant_words, key=len, reverse=True):
                     for name, ing in self.exact_index.items():
                         if word in name.split():
                             return ing
             return None
 
-        # 5. Одно слово (не стоп-слово) — ищем точное совпадение в названиях
         if len(words) == 1 and words[0] not in self.STOP_WORDS:
             word = words[0]
             if word in self.word_index:
                 candidates = self.word_index[word]
                 if len(candidates) == 1:
                     return candidates[0]
-                # Если несколько — ищем где слово является точным названием
                 for ing in candidates:
                     if ing["name"].lower() == word:
                         return ing
@@ -123,26 +128,20 @@ class IngredientRAG:
         if not found_ingredients:
             return ""
 
-        blocks = []
-        blocks.append("=== СПРАВОЧНАЯ ИНФОРМАЦИЯ ОБ ИНГРЕДИЕНТАХ ===")
-        blocks.append("")
+        blocks = ["=== СПРАВОЧНАЯ ИНФОРМАЦИЯ ОБ ИНГРЕДИЕНТАХ ===", ""]
 
         for ing in found_ingredients:
-            block = f"• {ing['name']}"
-            block += ":"
-
+            block = f"• {ing['name']}:"
             if ing.get('what_does_it_do'):
                 block += f"\n  Действие: {ing['what_does_it_do']}"
             if ing.get('who_is_it_good_for'):
                 block += f"\n  Подходит для: {ing['who_is_it_good_for']}"
             if ing.get('who_should_avoid'):
                 block += f"\n  Кому избегать: {ing['who_should_avoid']}"
-
             blocks.append(block)
             blocks.append("")
 
         blocks.append("=== КОНЕЦ СПРАВКИ ===")
-
         return "\n".join(blocks)
 
 
