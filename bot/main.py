@@ -20,7 +20,7 @@ async def main():
     await init_db()
     logger.info("Database initialized")
 
-
+    #Используется tg-ws-proxy
     if config.USE_PROXY and config.PROXY_URL:
         try:
             logger.info(f"Подключение через SOCKS5 прокси: {config.PROXY_URL}")
