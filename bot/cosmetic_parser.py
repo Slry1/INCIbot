@@ -87,7 +87,7 @@ class WildberriesParser:
         'inheritFilters': 'false',
         'lang': 'ru',
         'locale': 'ru',
-        'query': query,
+        'query': "",
         'resultset': 'catalog',
         'sort': 'popular',
         'spp': '30',
@@ -283,7 +283,7 @@ class WildberriesParser:
 
     def search_sync(self, query: str) -> Optional[ProductInfo]:
 
-
+        self.params['query'] = query
         try:
             resp = requests.get(
                 self.SEARCH_API,
@@ -318,6 +318,7 @@ class WildberriesParser:
 
     def search_sync_multiple(self, query: str, limit: int = 5) -> List[dict]:
 
+        self.params['query'] = query
         try:
             resp = requests.get(
                 self.SEARCH_API,

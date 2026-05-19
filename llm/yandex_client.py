@@ -152,10 +152,9 @@ class YandexGPTClient:
     async def generate_response(
         self,
         prompt: str,
-        use_deepseek: bool = False,
     ) -> Optional[Dict[str, Any]]:
 
-        raw_response, token_info = await self._make_request(prompt, use_deepseek)
+        raw_response, token_info = await self._make_request(prompt)
 
         if raw_response is None:
             return {

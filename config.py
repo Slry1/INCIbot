@@ -14,7 +14,7 @@ class Config:
     USE_PROXY = os.getenv("USE_PROXY", "False").lower() == "true"
     PROXY_URL = os.getenv("PROXY_URL", None)
     VERIFIER_ENABLED = os.getenv("VERIFIER_ENABLED", "true").lower() == "true"
-    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///bot_database.db")
+    DATABASE_URL = os.getenv("DATABASE_URL")
 
     RATE_LIMIT_BURST = int(os.getenv("RATE_LIMIT_BURST", "2"))
     RATE_LIMIT_RPM   = int(os.getenv("RATE_LIMIT_RPM",   "5"))
