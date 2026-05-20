@@ -46,36 +46,11 @@ class WildberriesParser:
     }
 
     cookies = {
-        '_wbauid': '3886396171766832830',
-        'x_wbaas_token': '1.1000.03ccf1c28964447a917ea71dac44136b.MHwxODguMjI2LjEwMy4xNHxNb3ppbGxhLzUuMCAoV2luZG93cyBOVCAxMC4wOyBXaW42NDsgeDY0OyBydjoxNTAuMCkgR2Vja28vMjAxMDAxMDEgRmlyZWZveC8xNTAuMHwxNzc5MjA1MTc2fHJldXNhYmxlfDJ8ZXlKb1lYTm9Jam9pSW4wPXwwfDN8MTc3ODYwMDM3Nnwx.MEUCIQDOue3SeNn85Hdsk4RTxIsP/0WwQcsMaU3SGCsJrnc2mwIgf7LHn7aqnymTwYuD3W7XFEJg4q2eMIh9xQu/XLbkxUk=',
-        '_wbauid': '6711631761777998238',
-        'wbx-validation-key': '18a8a867-773c-42a8-8666-c5c819b35343',
-        'external-locale': 'ru',
-        'cfidsw-wb': 'IBpKuWOx/3wZ5JOyQ+SUhp1p1dtUSIspUexES5b1FysUH1bZyn/LeAODRgHZaLTG8ZOoR64HuolnO7Yb7Rwf6lmVpRJiPAZ/r+gO1gmK238M60MzgwzETdDVfd7Ut/hYEF2kFxBZFHFB75V3hC8DFlmpTNE8MP0kq4IuOw==',
-        '__zzatw-wb': 'MDA0dC0yYBwREFsKEH49WgsbSl1pCENQGC9LXz1uLWEPJ3wjYnwgGWsvC1RDMmUIPkBNOTM5NGZwVydgTmAmTF5VCSwiGHhzH0FLVCNyM3dlaXceViUTFmcPRyJ1F0hAGxI6aCU6f1JpGWUzDldjGAsmVDVfP3ouGhp7aylPCHVXLwkqPWx0MGFRUUtiDxwXMlxOe3NdZxBEQE1HQnR6MERuJWdOYiZEXUlraWJRNF0tQUdHFHZ/OTBxf1dqWzkQTmZqcCQ+OC8uDDdBEVZNC3IxQF4tbw9ne1kkSlVSClpLRjVvKQo9FGNGRHN1K25tJGF8FFNMXD91F1lGQTZcGkt1ZS8MOTprbCRSUUNLY3waCmsvGhh+cixYDxNiRkhueyUtMWYnfEspNR0RMl5XVTQ7Z0FUWA==/VjrDQ==',
-        'routeb': '1777998346.759.376.923387|d4ae5f6f13c2fcce539dd766ca4b41fc',
-        'x-supplier-id-external': '',
-        '_cp': '1',
+
     }
 
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:150.0) Gecko/20100101 Firefox/150.0',
-        'Accept': '*/*',
-        'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-        # 'Accept-Encoding': 'gzip, deflate, br, zstd',
-        'Referer': 'https://www.wildberries.ru/catalog/0/search.aspx?search=%D0%BA%D1%80%D0%B5%D0%BC%20%D0%B4%D0%BB%D1%8F%20%D1%80%D1%83%D0%BA',
-        'authorization': 'Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3Nzc5OTgzNDUsInVzZXIiOiIxOTE5NDA2MDEiLCJzaGFyZF9rZXkiOiIyOSIsImNsaWVudF9pZCI6IndiIiwic2Vzc2lvbl9pZCI6IjNhOTY4NTY0NDJkZjRiZTZiZTcxNmI3Y2VjNWI1NTEzIiwicGhvbmUiOiJDdEhBTlJ3QTRBVy9SWnJwMjdXNFJRPT0iLCJ2YWxpZGF0aW9uX2tleSI6ImY5MzE2NDY5NDJiYjFhNjFiMTViNjcxYWExYmMxZTJjMmRlYmNlODNiZWNjYWU5Mjk2NzkyMjhlMmZhYmM4YzIiLCJ1c2VyX3JlZ2lzdHJhdGlvbl9kdCI6MTcyODYzNDI2NywidmVyc2lvbiI6Mn0.nOwLJf6jK0aXuKa4qbyCuRG1Fzwulf2cGl8ChwqBljE7pumxNC7L445U9fGumCdetEQf2VbjLodeqX8zmtI7J8XuMM4Qcq7uo95Y_7Pd-AjIlYGiegWoBceajWxV3LLxKbgSgFSCtzm2XjC7GAEUCxcayN4wNJXqRyBuHblCYPLLhWS-JuhWeJXBR9x1Wyz2LrHUAKYgvuKNdnHbvVtD72ESzlq5OCG2ptnheQ3KzSMEGgZI23MqHS4uAvDqEQrBHYA8sVHah_Su4fqzi4VVClmY4MejUhbJfuS5PTQT7a0G9ZHwUmXBhsXAVlL5KWwHGZaAqJ3Krweq7dz9gDCe_Q',
-        'deviceid': 'site_1d01b8a276b841c5bda355fd1d68915f',
-        'x-queryid': 'qid388639617176683283020260506110304',
-        'x-requested-with': 'XMLHttpRequest',
-        'x-spa-version': '14.8.6',
-        'x-userdata': 'AQUAAQIAAQIDAAoEAAMBAAIAEqherx2uvaz-pmgmvaKdLXOok6a9rP4wuaxTquir_K8IKlOgDi8nr6csrq3zqR4liLAzsJknkqrSqM6rPaloqtIguafno4cwsybyrjMncq9SrvKtEyeSL12tKDD4Laggviy-M6et_TE4qAQS8qxzrairvayzrPOaXaxZqb2q8iqILHmqaK3oLOgrPSSeLB4g7ipyNWgs2a-nMJ6pUy5yLtKqSLDDM0ct3ar9MOOr3LJ9qG4qnbO9Lx2guSxuqKOhfp6IpFOqna-SpUiYqSpyIjMsTijZqLkqkiuHLh0eSKtSouirUqj4L0coqSkuq4eU868IK_Ksmaryo9wqciQernIACyNWMmOwJKx-Lz0lyh5jpsqtBCewKzCYsTGkpTGppCdWJmMrCivJMqMf_DCEJjAuUKZ9Lb2017GXHfAklxy-q4kqiiUEqXepKi3qKESiKpq9JzAv8KX3rKQyBKZjoX2s1yykr_CrlqxEr8mtVywesjAU16RrL3Co3in3LmMivauwrrAtnTRRr7yeyi5Xqf2i8DGRp8mio6grLCQoUSjLq-OwES5jJJGrvLD-pZckHioQrUSlF6-8KleRcaajLz2qELGKoKQrcC3Kpz2sBZz3sVetkandqN4knqCkKeotqi1EsZ0v1ilEL7wnSSZdLBguii0XoxYl5Kpdpj2rViHELgqy-bt_rjC1z7VbAURDMvw',
-        'x-userid': '191940601',
-        'Connection': 'keep-alive',
-        # 'Cookie': '_wbauid=3886396171766832830; x_wbaas_token=1.1000.03ccf1c28964447a917ea71dac44136b.MHwxODguMjI2LjEwMy4xNHxNb3ppbGxhLzUuMCAoV2luZG93cyBOVCAxMC4wOyBXaW42NDsgeDY0OyBydjoxNTAuMCkgR2Vja28vMjAxMDAxMDEgRmlyZWZveC8xNTAuMHwxNzc5MjA1MTc2fHJldXNhYmxlfDJ8ZXlKb1lYTm9Jam9pSW4wPXwwfDN8MTc3ODYwMDM3Nnwx.MEUCIQDOue3SeNn85Hdsk4RTxIsP/0WwQcsMaU3SGCsJrnc2mwIgf7LHn7aqnymTwYuD3W7XFEJg4q2eMIh9xQu/XLbkxUk=; _wbauid=6711631761777998238; wbx-validation-key=18a8a867-773c-42a8-8666-c5c819b35343; external-locale=ru; cfidsw-wb=IBpKuWOx/3wZ5JOyQ+SUhp1p1dtUSIspUexES5b1FysUH1bZyn/LeAODRgHZaLTG8ZOoR64HuolnO7Yb7Rwf6lmVpRJiPAZ/r+gO1gmK238M60MzgwzETdDVfd7Ut/hYEF2kFxBZFHFB75V3hC8DFlmpTNE8MP0kq4IuOw==; __zzatw-wb=MDA0dC0yYBwREFsKEH49WgsbSl1pCENQGC9LXz1uLWEPJ3wjYnwgGWsvC1RDMmUIPkBNOTM5NGZwVydgTmAmTF5VCSwiGHhzH0FLVCNyM3dlaXceViUTFmcPRyJ1F0hAGxI6aCU6f1JpGWUzDldjGAsmVDVfP3ouGhp7aylPCHVXLwkqPWx0MGFRUUtiDxwXMlxOe3NdZxBEQE1HQnR6MERuJWdOYiZEXUlraWJRNF0tQUdHFHZ/OTBxf1dqWzkQTmZqcCQ+OC8uDDdBEVZNC3IxQF4tbw9ne1kkSlVSClpLRjVvKQo9FGNGRHN1K25tJGF8FFNMXD91F1lGQTZcGkt1ZS8MOTprbCRSUUNLY3waCmsvGhh+cixYDxNiRkhueyUtMWYnfEspNR0RMl5XVTQ7Z0FUWA==/VjrDQ==; routeb=1777998346.759.376.923387|d4ae5f6f13c2fcce539dd766ca4b41fc; x-supplier-id-external=; _cp=1',
-        'Sec-Fetch-Dest': 'empty',
-        'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Site': 'same-origin',
+
     }
 
     params = {
