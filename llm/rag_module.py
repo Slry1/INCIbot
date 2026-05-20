@@ -83,21 +83,33 @@ class IngredientRAG:
             return None
 
         if len(words) >= 2:
+            # Поиск по биграммам через word_index (O(1) вместо O(n))
             for i in range(len(words) - 1):
-                pair = f"{words[i]} {words[i + 1]}"
-                for name, ing in self.exact_index.items():
-                    if pair in name:
-                        return ing
+                w1, w2 = words[i], words[i + 1]
+                candidates1 = set(id(ing) for ing in self.word_index.get(w1, []))
+                candidates2 = set(id(ing) for ing in self.word_index.get(w2, []))
+                common_ids = candidates1 & candidates2
+                if common_ids:
+                    # Берём первый совпавший ингредиент
+                    for ing in self.word_index.get(w1, []):
+                        if id(ing) in common_ids:
+                            return ing
 
+            # Поиск по значимым словам через word_index
             significant_words = [
                 w for w in words
                 if w not in self.STOP_WORDS and len(w) > 2
             ]
             if significant_words:
                 for word in sorted(significant_words, key=len, reverse=True):
-                    for name, ing in self.exact_index.items():
-                        if word in name.split():
-                            return ing
+                    if word in self.word_index:
+                        candidates = self.word_index[word]
+                        if len(candidates) == 1:
+                            return candidates[0]
+                        # Если несколько — возвращаем точное совпадение по слову
+                        for ing in candidates:
+                            if word in ing["name"].lower().split():
+                                return ing
             return None
 
         if len(words) == 1 and words[0] not in self.STOP_WORDS:
