@@ -15,11 +15,10 @@ class PromptBuilder:
             rag: Optional['IngredientRAG'] = None,
     ) -> str:
 
-        history_text = ""
-        if history:
-            history_text = "\nИстория предыдущих запросов:\n"
-            for i, h in enumerate(history[-5:], 1):
-                history_text += f"{i}. {h.user_message[:100]}...\n"
+        #if history:
+        #    history_text = "\nИстория предыдущих запросов:\n"
+        #    for i, h in enumerate(history[-5:], 1):
+        #        history_text += f"{i}. {h.user_message[:100]}...\n"
 
         rag_context = ""
         if rag:

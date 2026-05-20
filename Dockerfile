@@ -29,7 +29,6 @@ COPY bot/                  ./bot/
 COPY database/             ./database/
 COPY llm/                  ./llm/
 COPY config.py             ./config.py
-COPY main.py               ./main.py
 COPY requirements.txt      ./requirements.txt
 
 RUN useradd -m -u 1000 botuser && chown -R botuser:botuser /app
@@ -43,4 +42,4 @@ ENV PYTHONUNBUFFERED=1 \
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD python -c "import sys; sys.exit(0)" || exit 1
 
-CMD ["python", "main.py"]
+CMD ["python", "bot/main.py"]

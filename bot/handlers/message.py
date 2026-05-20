@@ -23,7 +23,41 @@ _rag = IngredientRAG(kb_path=config.RAG_DATA_PATH)
 _verifier = ResponseVerifier()
 _rate_limiter = RateLimiter()
 
-user_search_cache = {}
+_SEARCH_CACHE_TTL = 300  # секунд (5 минут)
+
+class _TTLCache:
+    """Кэш результатов поиска с автоматическим истечением записей."""
+
+    def __init__(self, ttl: int):
+        self._ttl = ttl
+        self._data: dict[int, tuple[list, float]] = {}
+
+    def set(self, user_id: int, products: list) -> None:
+        self._evict()
+        self._data[user_id] = (products, time.time())
+
+    def get(self, user_id: int) -> list | None:
+        entry = self._data.get(user_id)
+        if entry is None:
+            return None
+        products, ts = entry
+        if time.time() - ts > self._ttl:
+            del self._data[user_id]
+            return None
+        return products
+
+    def pop(self, user_id: int) -> None:
+        self._data.pop(user_id, None)
+
+    def _evict(self) -> None:
+        """Удаляет все просроченные записи."""
+        now = time.time()
+        expired = [uid for uid, (_, ts) in self._data.items() if now - ts > self._ttl]
+        for uid in expired:
+            del self._data[uid]
+
+
+user_search_cache = _TTLCache(ttl=_SEARCH_CACHE_TTL)
 
 
 async def safe_edit(msg: Message, text: str, **kwargs) -> None:
@@ -349,7 +383,7 @@ async def handle_message(message: Message, state: FSMContext, llm_client: Yandex
             )
             return
 
-        user_search_cache[message.from_user.id] = products
+        user_search_cache.set(message.from_user.id, products)
 
         response_text = f"🔍 <b>Найдено {len(products)} товаров:</b>\n\n"
         for i, p in enumerate(products, 1):
@@ -445,4 +479,4 @@ async def on_product_select(
 async def on_search_cancel(callback: CallbackQuery):
     await callback.answer("Поиск отменен")
     await safe_edit(callback.message, "❌ Поиск отменен")
-    user_search_cache.pop(callback.from_user.id, None)
+    user_search_cache.pop(callback.from_user.id)

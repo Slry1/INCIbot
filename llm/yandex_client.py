@@ -151,7 +151,7 @@ class YandexGPTClient:
 
     async def generate_response(
         self,
-        prompt: str,
+        prompt: str
     ) -> Optional[Dict[str, Any]]:
 
         raw_response, token_info = await self._make_request(prompt)
