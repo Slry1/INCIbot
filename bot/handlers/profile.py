@@ -5,6 +5,8 @@ from aiogram.fsm.state import State, StatesGroup
 from database.db import get_session
 from database.repository import DatabaseRepository
 from bot.handlers.start import main_keyboard
+from llm.sanitizer import InputSanitizer
+from loguru import logger
 
 router = Router()
 
@@ -64,12 +66,27 @@ async def process_skin_type(message: Message, state: FSMContext):
         await message.answer("Настройка отменена", reply_markup=main_keyboard)
         return
 
-    await state.update_data(skin_type=message.text)
+    result = InputSanitizer.check_profile_field(message.text)
+
+    if not result.is_safe:
+        if result.threat_level.value == "high":
+            logger.warning(
+                f"Profile injection attempt in skin_type: "
+                f"user={message.from_user.id}, text={message.text[:100]!r}"
+            )
+        await message.answer(
+            "⚠️ Недопустимое значение для типа кожи.\n"
+            "Используйте только буквы и дефис, не более 50 символов.\n\n"
+            "Попробуйте ещё раз или нажмите ❌ Отмена."
+        )
+        return
+
+    await state.update_data(skin_type=message.text.strip())
     await state.set_state(ProfileSettings.waiting_for_allergens)
     await message.answer(
         "Укажите аллергены (через запятую), на которые у вас есть реакция.\n"
         "Пример: отдушка, лаванда, орехи\n\n"
-        "Если аллергенов нет, напишите 'нет'."
+        "Если аллергенов нет, напишите «нет»."
     )
 
 
@@ -80,16 +97,29 @@ async def process_allergens(message: Message, state: FSMContext):
         await message.answer("Настройка отменена", reply_markup=main_keyboard)
         return
 
-    allergens = []
-    if message.text.lower() != "нет":
-        allergens = [a.strip() for a in message.text.split(",")]
+    result = InputSanitizer.check_profile_list(message.text)
 
+    if not result.is_safe:
+        if result.threat_level.value == "high":
+            logger.warning(
+                f"Profile injection attempt in allergens: "
+                f"user={message.from_user.id}, text={message.text[:100]!r}"
+            )
+        await message.answer(
+            "⚠️ Недопустимое значение в списке аллергенов.\n"
+            "Используйте только буквы, цифры и дефис. "
+            "Разделяйте аллергены запятой, не более 10 штук.\n\n"
+            "Попробуйте ещё раз или нажмите ❌ Отмена."
+        )
+        return
+
+    allergens = InputSanitizer.parse_profile_list(message.text)
     await state.update_data(allergens=allergens)
     await state.set_state(ProfileSettings.waiting_for_preferences)
     await message.answer(
         "Укажите ваши предпочтения (через запятую).\n"
         "Пример: натуральные компоненты, без спирта, веган\n\n"
-        "Если предпочтений нет, напишите 'нет'."
+        "Если предпочтений нет, напишите «нет»."
     )
 
 
@@ -100,10 +130,23 @@ async def process_preferences(message: Message, state: FSMContext):
         await message.answer("Настройка отменена", reply_markup=main_keyboard)
         return
 
-    preferences = []
-    if message.text.lower() != "нет":
-        preferences = [p.strip() for p in message.text.split(",")]
+    result = InputSanitizer.check_profile_list(message.text)
 
+    if not result.is_safe:
+        if result.threat_level.value == "high":
+            logger.warning(
+                f"Profile injection attempt in preferences: "
+                f"user={message.from_user.id}, text={message.text[:100]!r}"
+            )
+        await message.answer(
+            "⚠️ Недопустимое значение в списке предпочтений.\n"
+            "Используйте только буквы, цифры и дефис. "
+            "Разделяйте предпочтения запятой, не более 10 штук.\n\n"
+            "Попробуйте ещё раз или нажмите ❌ Отмена."
+        )
+        return
+
+    preferences = InputSanitizer.parse_profile_list(message.text)
     user_data = await state.get_data()
     skin_type = user_data.get("skin_type")
     allergens = user_data.get("allergens", [])

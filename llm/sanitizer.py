@@ -18,6 +18,8 @@ class SanitizationResult:
     threat_type: Optional[str]
     detail: Optional[str]
 
+
+
 _HIGH_PATTERNS: list[tuple[str, str]] = [
     (r"игнорируй\s+(все\s+)?предыдущие\s+инструкции",                                        "override_ru"),
     (r"ignore\s+(all\s+)?previous\s+instructions",                                           "override_en"),
@@ -25,7 +27,7 @@ _HIGH_PATTERNS: list[tuple[str, str]] = [
     (r"forget\s+(everything|all)\s+(you('ve)?\s+been\s+told|above)",                         "forget_en"),
     (r"ты\s+теперь\s+.{0,60}(бот|ии|модель|ассистент|gpt)",                                  "persona_ru"),
     (r"you\s+are\s+now\s+.{0,60}(bot|ai|model|assistant|gpt)",                               "persona_en"),
-    (r"притворись\s+(что\s+ты\s+)?.{0,60}(без\s+ограничений|можешь\s+все)",                  "jailbreak_ru"),
+    (r"притворись\s+(что\s+ты\s+)?.{0,60}(без\s+ограничений|можешь\s+всё)",                  "jailbreak_ru"),
     (r"pretend\s+(you\s+are|to\s+be)\s+.{0,60}(without\s+restrictions|can\s+do\s+anything)", "jailbreak_en"),
     (r"act\s+as\s+(if\s+you\s+are\s+)?dan",                                                  "dan_jailbreak"),
     (r"(поставь|выставь|верни|напиши)\s+(score|оценку|балл)\s*[:\s]\s*10",                   "score_manipulation"),
@@ -37,18 +39,20 @@ _HIGH_PATTERNS: list[tuple[str, str]] = [
 ]
 
 _LOW_PATTERNS: list[tuple[str, str]] = [
-
     (r"```\s*(json|python|system)",                          "code_block"),
     (r"\{\s*\"role\"\s*:\s*\"system\"",                      "role_system_json"),
     (r"data:text/html",                                      "data_uri"),
     (r"javascript:",                                         "js_injection"),
 ]
 
-
 _MAX_INGREDIENTS_LENGTH = 1000
+_MAX_PROFILE_FIELD_LENGTH = 50
+_MAX_PROFILE_LIST_ITEMS = 10
+_PROFILE_ALLOWED = re.compile(r'^[а-яёА-ЯЁa-zA-Z0-9\s\-]+$')
 
 
 class InputSanitizer:
+
     @staticmethod
     def check(text: str, source: str = "user") -> SanitizationResult:
         if not text:
@@ -106,11 +110,89 @@ class InputSanitizer:
         )
 
     @staticmethod
+    def check_profile_field(text: str, field: str = "profile") -> SanitizationResult:
+        if not text or not text.strip():
+            return SanitizationResult(
+                is_safe=False,
+                threat_level=ThreatLevel.LOW,
+                threat_type="empty_field",
+                detail=f"{field} is empty",
+            )
+
+        text = text.strip()
+
+        if len(text) > _MAX_PROFILE_FIELD_LENGTH:
+            return SanitizationResult(
+                is_safe=False,
+                threat_level=ThreatLevel.LOW,
+                threat_type="field_too_long",
+                detail=f"{field}: {len(text)} > {_MAX_PROFILE_FIELD_LENGTH}",
+            )
+
+        injection_check = InputSanitizer.check(text, source=f"profile/{field}")
+        if not injection_check.is_safe:
+            return injection_check
+
+        if not _PROFILE_ALLOWED.match(text):
+            return SanitizationResult(
+                is_safe=False,
+                threat_level=ThreatLevel.LOW,
+                threat_type="invalid_characters",
+                detail=f"{field} contains disallowed characters",
+            )
+
+        return SanitizationResult(
+            is_safe=True,
+            threat_level=ThreatLevel.NONE,
+            threat_type=None,
+            detail=None,
+        )
+
+    @staticmethod
+    def check_profile_list(text: str, field: str = "list") -> SanitizationResult:
+        if not text or text.strip().lower() in ("нет", "no", "-", "none", ""):
+            return SanitizationResult(
+                is_safe=True,
+                threat_level=ThreatLevel.NONE,
+                threat_type=None,
+                detail=None,
+            )
+
+        items = [item.strip() for item in text.split(",") if item.strip()]
+
+        if len(items) > _MAX_PROFILE_LIST_ITEMS:
+            return SanitizationResult(
+                is_safe=False,
+                threat_level=ThreatLevel.LOW,
+                threat_type="too_many_items",
+                detail=f"{field}: {len(items)} > {_MAX_PROFILE_LIST_ITEMS}",
+            )
+
+        for item in items:
+            result = InputSanitizer.check_profile_field(item, field=f"{field}[item]")
+            if not result.is_safe:
+                return result
+
+        return SanitizationResult(
+            is_safe=True,
+            threat_level=ThreatLevel.NONE,
+            threat_type=None,
+            detail=None,
+        )
+
+    @staticmethod
+    def parse_profile_list(value: str) -> list:
+        if not value:
+            return []
+        return [item.strip().lower() for item in value.split(",") if item.strip()]
+
+    @staticmethod
     def neutralize(text: str) -> str:
         if not text:
             return text
 
         result = text[:_MAX_INGREDIENTS_LENGTH]
+
 
         result = re.sub(r'<(\s*system\s*)', r'&lt;\1', result, flags=re.IGNORECASE)
         result = re.sub(r'\[INST\]', '[INST_BLOCKED]', result, flags=re.IGNORECASE)
