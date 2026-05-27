@@ -13,16 +13,25 @@ class PromptBuilder:
             name: str,
             history: List[Any] = None,
             rag: Optional['IngredientRAG'] = None,
+            ocr_warnings: Optional[List[str]] = None,
     ) -> str:
-
-        #if history:
-        #    history_text = "\nИстория предыдущих запросов:\n"
-        #    for i, h in enumerate(history[-5:], 1):
-        #        history_text += f"{i}. {h.user_message[:100]}...\n"
 
         rag_context = ""
         if rag:
             rag_context = rag.enrich_prompt(ingredients)
+
+        # Блок предупреждений о качестве OCR-распознавания
+        ocr_note = ""
+        if ocr_warnings:
+            warnings_text = "\n".join(f"- {w}" for w in ocr_warnings)
+            ocr_note = f"""
+ПРИМЕЧАНИЕ ОБ ИСТОЧНИКЕ СОСТАВА
+
+Состав получен методом OCR (распознавание текста с фотографии этикетки). Обрати внимание:
+{warnings_text}
+
+Учитывай это при формировании оценки: если состав неполный или содержит нераспознанные токены, отрази это в explanation и warnings.
+"""
 
         prompt = f"""{rag_context}
 Пользовательские параметры:
@@ -30,7 +39,7 @@ class PromptBuilder:
 - Аллергены: {allergens if allergens else "не указаны"}
 - Предпочтения: {preferences if preferences else "не указаны"}
 - Название средства: {name if name else "не указано"}
-
+{ocr_note}
 Текущий состав для оценки:
 <ingredients>
 {ingredients}

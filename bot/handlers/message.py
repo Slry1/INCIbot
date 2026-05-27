@@ -14,20 +14,26 @@ from llm.verifier import ResponseVerifier
 from llm.sanitizer import InputSanitizer, ThreatLevel
 from llm.rate_limiter import RateLimiter
 from bot.cosmetic_parser import CosmeticParser, ProductInfo
+from bot.ocr_module import OCRModule
 from config import config
 import asyncio
+import aiohttp
+from loguru import logger
 
 router = Router()
 _cosmetic_parser = CosmeticParser()
 _rag = IngredientRAG(kb_path=config.RAG_DATA_PATH)
 _verifier = ResponseVerifier()
 _rate_limiter = RateLimiter()
+_ocr = OCRModule(
+    api_key=config.YANDEX_API_KEY,
+    folder_id=config.YANDEX_FOLDER_ID,
+    inci_db_path=config.INCI_DB_PATH,
+)
 
 _SEARCH_CACHE_TTL = 300  # секунд (5 минут)
 
 class _TTLCache:
-    """Кэш результатов поиска с автоматическим истечением записей."""
-
     def __init__(self, ttl: int):
         self._ttl = ttl
         self._data: dict[int, tuple[list, float]] = {}
@@ -50,7 +56,6 @@ class _TTLCache:
         self._data.pop(user_id, None)
 
     def _evict(self) -> None:
-        """Удаляет все просроченные записи."""
         now = time.time()
         expired = [uid for uid, (_, ts) in self._data.items() if now - ts > self._ttl]
         for uid in expired:
@@ -74,9 +79,6 @@ class ProductSelectCallback(CallbackData, prefix="prod"):
 
 class SearchCancelCallback(CallbackData, prefix="cancel_search"):
     pass
-
-
-# ─── Вспомогательные функции ─────────────────────────────────────────────────
 
 def _is_url(text: str) -> bool:
     lower = text.lower()
@@ -156,7 +158,7 @@ def _format_answer(
     if product_info:
         text += f"\n🔗 <a href='{product_info.source_url}'>Ссылка на товар</a>\n"
 
-    text += "\n<i>⚠️ Оценка носит рекомендательный характер и сгенерирована при помощи ИИ. Перед использованием проведите патч-тест.</i>"
+    text += "\n<i>⚠️ Оценка носит рекомендательный характер и сгенерирована при помощи ИИ. Не является медицинским заключением. Перед использованием проведите патч-тест.</i>"
 
     return text
 
@@ -302,9 +304,10 @@ async def prompt_ingredients(message: Message):
     await message.answer(
         "📝 Отправьте состав косметического средства для оценки.\n\n"
         "Вы можете:\n"
-        "• Вставить <b>ссылку</b> на товар с Wildberries\n"
-        "• Написать <b>название</b> продукта — бот найдёт его сам\n"
-        "• Вставить <b>состав</b> напрямую (Aqua, Glycerin, ...)\n\n"
+        "• 📷 Прислать <b>фото этикетки</b> — бот сам распознает состав\n"
+        "• 🔗 Вставить <b>ссылку</b> на товар с Wildberries\n"
+        "• 🔍 Написать <b>название</b> продукта — бот найдёт его сам\n"
+        "• 📋 Вставить <b>состав</b> напрямую (Aqua, Glycerin, ...)\n\n"
         "Пример ссылки: https://www.wildberries.ru/catalog/12345678/detail.aspx\n"
         "Пример названия: <i>Крем для лица Cerave увлажняющий</i>",
         parse_mode="HTML",
@@ -449,6 +452,136 @@ async def handle_message(message: Message, state: FSMContext, llm_client: Yandex
                 "😔 Извините, не удалось обработать запрос.\n"
                 "Пожалуйста, попробуйте позже или уточните состав."
             )
+
+
+@router.message(F.photo)
+async def handle_photo(message: Message, llm_client: YandexGPTClient):
+    start_time = time.time()
+
+    rl = await _rate_limiter.acquire(message.from_user.id)
+    if not rl.allowed:
+        limit_labels = {
+            "burst": "слишком много запросов подряд",
+            "rpm":   "превышен лимит запросов в минуту",
+            "rph":   "превышен лимит запросов в час",
+        }
+        reason = limit_labels.get(rl.limit_type, "превышен лимит запросов")
+        seconds = rl.retry_after_seconds or 60
+        wait_str = f"{seconds // 60} мин {seconds % 60} сек" if seconds >= 60 else f"{seconds} сек"
+        await message.answer(
+            f"⏳ {reason.capitalize()}.\n"
+            f"Пожалуйста, подождите {wait_str} перед следующим запросом."
+        )
+        return
+
+    status_msg = await message.answer("📷 Распознаю состав на фотографии...")
+
+    async for session in get_session():
+        repo = DatabaseRepository(session)
+        user = await repo.get_or_create_user(message.from_user.id)
+        history = await repo.get_user_history(user.id, limit=5)
+        break
+
+    photo = message.photo[-1]
+    try:
+        file = await message.bot.get_file(photo.file_id)
+        photo_bytes = await message.bot.download_file(file.file_path)
+        photo_bytes = photo_bytes.read()
+    except Exception as e:
+        logger.error(f"OCR: ошибка скачивания фото: {e}")
+        await safe_edit(status_msg, "😔 Не удалось загрузить фотографию. Попробуйте ещё раз.")
+        return
+
+    await safe_edit(status_msg, "🔍 Анализирую текст на этикетке...")
+    async with aiohttp.ClientSession() as http_session:
+        ocr_result = await _ocr.process_photo(photo_bytes, http_session)
+
+    if not ocr_result.success:
+        tip = ""
+        if "нечёткое" in ocr_result.error.lower() or "текст не распознан" in ocr_result.error.lower():
+            tip = "\n\n💡 <b>Совет:</b> сфотографируйте этикетку крупнее, при хорошем освещении, без бликов."
+        elif "не обнаружен" in ocr_result.error.lower():
+            tip = "\n\n💡 Убедитесь что на фото видна часть этикетки с составом (обычно мелкий текст на обратной стороне)."
+        await safe_edit(
+            status_msg,
+            f"😔 {ocr_result.error}{tip}\n\n"
+            "Вы также можете вставить состав текстом вручную.",
+            parse_mode="HTML",
+        )
+        return
+
+    corrections_note = ""
+    if ocr_result.corrections:
+        corrections_note = (
+            f"\n🔧 <i>Исправлено OCR-ошибок: {len(ocr_result.corrections)}</i>"
+        )
+
+    unknown_note = ""
+    if ocr_result.unknown and len(ocr_result.unknown) <= 5:
+        unknown_note = (
+            f"\n⚠️ <i>Не распознано: {', '.join(ocr_result.unknown[:3])}"
+            + ("..." if len(ocr_result.unknown) > 3 else "") + "</i>"
+        )
+
+    await safe_edit(
+        status_msg,
+        f"✅ Найдено <b>{ocr_result.total_ingredients}</b> ингредиентов "
+        f"(точность {ocr_result.exact_rate:.0f}%){corrections_note}{unknown_note}\n\n"
+        "🤖 Анализирую состав...",
+        parse_mode="HTML",
+    )
+
+    prompt = PromptBuilder.build_prompt(
+        skin_type=user.skin_type,
+        allergens=user.allergens or [],
+        preferences=user.preferences or [],
+        name="",
+        ingredients=ocr_result.composition,
+        history=history,
+        rag=_rag,
+        ocr_warnings=ocr_result.quality_warnings or None,
+    )
+
+    response, was_corrected = await _evaluate_and_verify(
+        llm_client=llm_client,
+        prompt=prompt,
+        ingredients=ocr_result.composition,
+        skin_type=user.skin_type or "",
+        allergens=user.allergens or [],
+        status_message=status_msg,
+        source="ocr_photo",
+        telegram_id=message.from_user.id,
+    )
+
+    processing_time = int((time.time() - start_time) * 1000)
+    await status_msg.delete()
+
+    if response and response.get("score") is not None:
+        answer_text = _format_answer(response, None, was_corrected)
+        # Добавляем пометку что состав получен через OCR
+        answer_text += (
+            f"\n📷 <i>Состав распознан с фотографии этикетки (OCR).</i>"
+            f"\n<i>⚠️ Убедитесь что полный состав попал в кадр — "
+            f"ингредиенты в конце списка могут отсутствовать.</i>"
+        )
+        await message.answer(answer_text, parse_mode="HTML")
+
+        async for session in get_session():
+            repo = DatabaseRepository(session)
+            await repo.save_history(
+                user_id=user.id,
+                user_message="[фото этикетки]",
+                llm_response_raw=str(response),
+                llm_response_parsed=response,
+                prompt_used=prompt,
+                processing_time_ms=processing_time,
+            )
+            break
+    else:
+        await message.answer(
+            "😔 Состав распознан, но не удалось получить оценку.\n"
+            "Попробуйте отправить состав текстом вручную."
+        )
 
 
 @router.callback_query(ProductSelectCallback.filter())

@@ -29,5 +29,10 @@ class Config:
         "RAG_DATA_PATH",
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "llm", "data", "ingredients.json")
     )
+    INCI_DB_PATH = os.getenv(
+        "INCI_DB_PATH",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "llm", "data", "inci_ingredients.json")
+    )
+
 
 config = Config()

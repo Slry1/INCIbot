@@ -5,6 +5,10 @@ import datetime
 Base = declarative_base()
 
 
+def _now() -> datetime.datetime:
+    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -13,8 +17,8 @@ class User(Base):
     username = Column(String(255), nullable=True)
     first_name = Column(String(255), nullable=True)
     last_name = Column(String(255), nullable=True)
-    first_seen = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    last_active = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    first_seen = Column(DateTime, default=_now)
+    last_active = Column(DateTime, default=_now, onupdate=_now)
 
     skin_type = Column(String(50), nullable=True)
     allergens = Column(JSON, default=list)
@@ -27,7 +31,7 @@ class History(Base):
 
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    timestamp = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
+    timestamp = Column(DateTime, default=_now)
     user_message = Column(Text, nullable=False)
     llm_response_raw = Column(Text, nullable=True)
     llm_response_parsed = Column(JSON, nullable=True)
@@ -39,7 +43,7 @@ class SecurityEvent(Base):
     __tablename__ = "security_events"
 
     id           = Column(Integer, primary_key=True)
-    timestamp    = Column(DateTime, default=datetime.datetime.now(datetime.UTC), nullable=False, index=True)
+    timestamp    = Column(DateTime, default=_now, nullable=False, index=True)
     telegram_id  = Column(BigInteger, nullable=True, index=True)
     threat_level = Column(String(10),  nullable=False)
     threat_type  = Column(String(50),  nullable=True)
