@@ -194,7 +194,7 @@ docker logs incibot_bot -f
 | Qwen3 235B | 0,88 | 2,25 | 85,7% |
 | YandexGPT 5 Lite | 0,82 | — | 42,9% |
 
-DeepSeek 3.2 выбран как основная модель — единственная с ADR 100% при FP 0%.
+DeepSeek 3.2 выбран как основная модель — единственная с ADR (Alleregn Detection Rate) 100% при FP 0%.
 
 ---
 
