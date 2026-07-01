@@ -234,33 +234,6 @@ yandexgpt_bot/
 └── .env                         # не коммитить
 ```
 
----
-
-## 🧪 Тестирование
-
-```bash
-# Тесты sanitizer (без API)
-pytest test_sanitizer.py -v
-
-# Тесты парсера WB (реальные запросы)
-pytest test_wb_parser.py -v -s
-
-# Бенчмарк верификатора
-python benchmark_verifier.py
-
-# Тест стабильности оценок
-python benchmark_stability.py
-
-# Allergen Detection Rate (40 кейсов, ~5 мин)
-python run_allergen_benchmark.py
-
-# Экспертная валидация (20 составов)
-python run_expert_benchmark.py
-python expert_validation.py --scores scores.json
-```
-
----
-
 ## ⚖️ Правовое соответствие
 
 - **152-ФЗ** — явное согласие при первом запуске, право на забвение (`/delete_data`), хранение в ЦОД Yandex Cloud на территории РФ, минимизация обрабатываемых данных
